@@ -122,6 +122,78 @@ Flags: 12位, 代表这个程序的这个段的访问权限.
 
 > 跟踪进入 `boot/main.c bootmain()`, 然后进入 `readsect()`. 识别出 `readsect()` 中每个语句对应的汇编指令, 跟踪 `readsect()` 的其余部分并返回到 `bootmain()`, 并标识从磁盘读取内核剩余扇区的 `for` 循环的开始和结束, 找出循环结束时将运行什么代码, 在那里设置一个断点, 然后继续运行到断点, 然后逐步完成引导加载程序的其余部分.
 
+## 几个问题的答案
+
+- 处理器从何时开始执行 32 位代码, 是什么导致从16位模式切换到32位模式?
+
+  代码如下:
+
+  ```
+  # Switch from real to protected mode, using a bootstrap GDT
+  # and segment translation that makes virtual addresses 
+  # identical to their physical addresses, so that the 
+  # effective memory map does not change during the switch.
+    lgdt    gdtdesc
+    movl    %cr0, %eax
+    orl     $CR0_PE_ON, %eax
+    movl    %eax, %cr0
+  ```
+
+  CR0 寄存器的 bit0 是保护模式启动位, 把这一位值1代表保护模式启动.
+
+  ```
+    # Jump to next instruction, but in 32-bit code segment.
+    # Switches processor into 32-bit mode.
+    ljmp    $PROT_MODE_CSEG, $protcseg
+  ```
+
+  跳转指令, 把当前的运行模式切换成32位地址模式.
+
+  详细分析过程参考: https://www.cnblogs.com/fatsheep9146/p/5115086.html
+
+  
+
+- 引导加载程序执行的最后一条指令是什么? 加载内核的第一条指令是什么?
+
+  Boot Loader 的最后一条指令是跳转到 Kernel 的入口(ELF header 中的入口地址).
+
+  ```
+  // call the entry point from the ELF header
+  // note: does not return!
+  ((void (*)(void)) (ELFHDR->e_entry))();
+  ```
+
+   对应于`obj/boot/boot.asm` 中的汇编代码:
+
+  ```
+  	((void (*)(void)) (ELFHDR->e_entry))();
+      7d61:	ff 15 18 00 01 00    	call   *0x10018
+  ```
+
+  即跳转到 0x10018 内存地址所存储的值处运行, 而该地址存储的内容是 0x10000C, 即 Kernel 的入口地址.
+
+  注意:
+
+  ```
+  此时位于保护模式下, Kernel 入口地址 0x10000C 经过全局描述符表(GDT)生成线性地址, 又因还没有开启分页, 线性地址就等于物理地址, 所以 kernel 代码本身就加载在内存物理地址 0x10000C.
+  ```
+
+- 内核的第一条指令在哪?
+
+  根据 kernel 的入口文件 kern/entry.S, 第一条指令如下, 由注释可知, 此时虚拟地址还没有设置, lootloader 跳转到 entry point 的物理地址即 0x10000C 执行.
+
+  ```
+  # '_start' specifies the ELF entry point.  Since we haven't set up
+  # virtual memory when the bootloader enters this code, we need the
+  # bootloader to jump to the *physical* address of the entry point.
+  .globl		_start
+  _start = RELOC(entry)
+  ```
+
+- 引导加载程序如何决定必须读取多少个扇区才能从磁盘获取整个内核? 它从哪里找到这些信息?
+
+  从 ELF Header 获取, 由 e_phoff 知道第一个段的位置, 由 e_phnum 可以知道需要加载几个段.
+
 ## Loading the Kernel
 
 读取硬盘上的 kernel image 到内存中并运行. 代码位于函数 `bootmain()` 中, 如 lab1 所说, 要弄清 `boot/main.c` 的输出则要知道 ELF 二进制文件是什么, kernel image 是以 ELF 形式组织的.
@@ -259,13 +331,13 @@ Program header table1 相对 ELF文件起始地址偏移 e_phoff(52 bytes), 对�
 
 ![](images/Kernal_image_mapping.JPG)
 
-### ELF & Program Header
+### ELF Structure
 
 关于 ELF Header 和 Program Header 的详细字段解释及更多可参考 ELF.md.
 
-#### Boot Loader
+#### Segment (Program Header)
 
-入口地址是: Entry point address:               0x7c00
+下面是用 *readelf* 命令分别读取 boot loader 的 ELF Header, Program Header 和 kernel 的 ELF Header, Program Header. 
 
 ```
 hongssun@hongssun-user:~/workspace/6.828/lab/obj/boot$ readelf -h boot.out
@@ -289,6 +361,9 @@ ELF Header:
   Size of section headers:           40 (bytes)
   Number of section headers:         9
   Section header string table index: 6
+  
+入口地址是: Entry point address:               0x7c00
+
 hongssun@hongssun-user:~/workspace/6.828/lab/obj/boot$ readelf -l boot.out
 
 Elf file type is EXEC (Executable file)
@@ -303,12 +378,10 @@ Program Headers:
  Section to Segment mapping:
   Segment Sections...
    00     .text .eh_frame 
-   01     
+   01  
+
+代码段的物理地址, 虚拟地址都是 0x7c00.
 ```
-
-#### Kernel
-
-入口地址是: Entry point address:               0x10000c
 
 ```
 hongssun@hongssun-user:~/workspace/6.828/lab/obj/kern$ git branch
@@ -334,7 +407,9 @@ ELF Header:
   Size of section headers:           40 (bytes)
   Number of section headers:         11
   Section header string table index: 8
-hongssun@hongssun-user:~/workspace/6.828/lab/obj/kern$ 
+  
+入口地址是: Entry point address:               0x10000c
+ 
 hongssun@hongssun-user:~/workspace/6.828/lab/obj/kern$ readelf -l kernel
 
 Elf file type is EXEC (Executable file)
@@ -351,87 +426,83 @@ Program Headers:
   Segment Sections...
    00     .text .rodata .stab .stabstr 
    01     .data .bss 
-   02     
+   02   
+
+代码段的物理地址 0x100000, 虚拟地址 0xf0100000.
+代码段(00) 包含 .text .rodata 等 section.
+数据段(01) 包含 .data .bss section
 ```
 
-## 几个问题的答案
+前面的代码及图例都是以 ELF 结构的执行视角, 即可执行文件的内存布局. 可执行文件由 segment(段)组成, 每个  segment 和 program header table 条目一一对应, 运行时一个 segment 由链接器将一个或多个 section 链接而成. 
 
-- 处理器从何时开始执行 32 位代码, 是什么导致从16位模式切换到32位模式?
+后面以 ELF 结构的链接视角, 即目标文件的内容布局. 目标文件的内容由节(section)组成, 通常我们说的程序代码的 .text, .bss, .data 这些都是 section. 比如 .text 告诉汇编器将后面的代码放入 .text section 中.
 
-  代码如下:
+目标文件中的 section 和  section header table 条目一一对应, 同一个 ELF 中, 所有 section header 大小相同.
 
-  ```
-  # Switch from real to protected mode, using a bootstrap GDT
-  # and segment translation that makes virtual addresses 
-  # identical to their physical addresses, so that the 
-  # effective memory map does not change during the switch.
-    lgdt    gdtdesc
-    movl    %cr0, %eax
-    orl     $CR0_PE_ON, %eax
-    movl    %eax, %cr0
-  ```
+#### Section
 
-  CR0 寄存器的 bit0 是保护模式启动位, 把这一位值1代表保护模式启动.
+```
+hongssun@hongssun-user:~/workspace/6.828/lab$ objdump -h obj/kern/kernel
 
-  ```
-    # Jump to next instruction, but in 32-bit code segment.
-    # Switches processor into 32-bit mode.
-    ljmp    $PROT_MODE_CSEG, $protcseg
-  ```
+obj/kern/kernel:     file format elf32-i386
 
-  跳转指令, 把当前的运行模式切换成32位地址模式.
+Sections:
+Idx Name          Size      VMA       LMA       File off  Algn
+  0 .text         00001917  f0100000  00100000  00001000  2**4
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+  1 .rodata       00000714  f0101920  00101920  00002920  2**5
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  2 .stab         00003889  f0102034  00102034  00003034  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  3 .stabstr      000018af  f01058bd  001058bd  000068bd  2**0
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  4 .data         0000a300  f0108000  00108000  00009000  2**12
+                  CONTENTS, ALLOC, LOAD, DATA
+  5 .bss          00000644  f0112300  00112300  00013300  2**5
+                  ALLOC
+  6 .comment      0000002b  00000000  00000000  00013300  2**0
+                  CONTENTS, READONLY
+```
 
-  详细分析过程参考: https://www.cnblogs.com/fatsheep9146/p/5115086.html
+- `.text` 程序的可执行指令
+- `.rodata` 只读数据, 如 C 编译器生成的ASCII字符串常量. (不用费心设置硬件来禁止写入)
+- `.data` 数据部分保存程序的初始化数据, 如全局变量 `int x = 5`
 
-  
+当链接器计算程序的内存布局时, 它为未初始化的全局变量(如 `int x;`)预留了空间, 在名为 `.bss` 中, 该部分在内存中紧跟的 `.data` 之后. C 语言要求“未初始化的”全局变量以 0 值开始, 因此无需在 ELF 二进制文件中存储 `.bss` 的内容. 相反链接器只记录 `.bss` 部分的地址和大小, 加载程序或程序本身必须将 `.bss` 部分设为零.
 
-- 引导加载程序执行的最后一条指令是什么? 加载内核的第一条指令是什么?
+### 链接地址和加载地址
 
-  Boot Loader 的最后一条指令是跳转到 Kernel 的入口(ELF header 中的入口地址).
+kernel image  每个 section 都有 “VMA” (链接地址)和 “LMA” (加载地址). `.text` 的链接地址和加载地址分别为0xf0100000, 0x100000. 通过链接脚本 kern/kernel.ld 指定.
 
-  ```
-  // call the entry point from the ELF header
-  // note: does not return!
-  ((void (*)(void)) (ELFHDR->e_entry))();
-  ```
+```
+SECTIONS
+{
+	/* Link the kernel at this address: "." means the current address */
+	. = 0xF0100000;
 
-   对应于`obj/boot/boot.asm` 中的汇编代码:
+	/* AT(...) gives the load address of this section, which tells
+	   the boot loader where to load the kernel in physical memory */
+	.text : AT(0x100000) {
+		*(.text .stub .text.* .gnu.linkonce.t.*)
+	}
+...
+}
+```
 
-  ```
-  	((void (*)(void)) (ELFHDR->e_entry))();
-      7d61:	ff 15 18 00 01 00    	call   *0x10018
-  ```
+一个程序节的加载地址是将该节加载到内存中的内存地址, 物理地址. 程序节的链接地址是该段期望被执行的内存地址, , 虚拟地址.
 
-  即跳转到 0x10018 内存地址所存储的值处运行, 而该地址存储的内容是 0x10000C, 即 Kernel 的入口地址.
+链接器以各种方式对二进制文件中的链接地址进行编码, 编译器在编译的时候会认定程序将会连续的存放在从链接地址开始的内存空间. 程序的链接地址实际上就是链接器对代码中的变量、函数等符号进行一个地址编排, 赋予这些抽象的符号一个地址, 然后在程序中通过地址访问相应变量和函数. 使用ld等链接程序时通过`-Ttext xxxx` 和 `-Tdata yyyy` 指定代码段/数据段的链接地址, 运行期间代码指令和数据变量的地址都在相对 `-T` 指定的基址的某个偏移量处, 这个地址实际上就是链接地址. 例如当代码需要全局变量的地址时, 如果从一个没有链接的地址执行二进制文件, 那么二进制文件通常无法工作.
 
-  注意:
+而加载地址则是可执行程序在物理内存中真正存放的位置.
 
-  ```
-  此时位于保护模式下, Kernel 入口地址 0x10000C 经过全局描述符表(GDT)生成线性地址, 又因还没有开启分页, 线性地址就等于物理地址, 所以 kernel 代码本身就加载在内存物理地址 0x10000C.
-  ```
+通常链接地址和加载地址通常是一样的, boot loader的链接地址和加载地址都是0x7C00, 在 `boot/Makefrag `里面定义. 而 kernel 是不一样的, 因为内核通常期望链接和运行在一个高的虚拟地址, 以便把低位的虚拟地址空间让给用户程序使用. 
 
-- 内核的第一条指令在哪?
-
-  根据 kernel 的入口文件 kern/entry.S, 第一条指令如下, 由注释可知, 此时虚拟地址还没有设置, lootloader 跳转到 entry point 的物理地址即 0x10000C 执行.
-
-  ```
-  # '_start' specifies the ELF entry point.  Since we haven't set up
-  # virtual memory when the bootloader enters this code, we need the
-  # bootloader to jump to the *physical* address of the entry point.
-  .globl		_start
-  _start = RELOC(entry)
-  ```
-
-- 引导加载程序如何决定必须读取多少个扇区才能从磁盘获取整个内核? 它从哪里找到这些信息?
-
-  从 ELF Header 获取, 由 e_phoff 知道第一个段的位置, 由 e_phnum 可以知道需要加载几个段.
-  
-  
+以前的机器通常没有 0xf0100000 这么大的物理内存, 解决方案就是在虚拟地址空间中 kernel 放在高地址处0xf0100000, 但是实际上还是存放在一个低的物理地址处 0x100000. 当用户程序想访问一个操作系统内核的指令时, 首先给出的是一个高的虚拟地址, 然后通过内存管理硬件(分段管理, 分页管理)将虚拟地址映射为真实的物理地址.
 
 ## 参考
 
-https://www.cnblogs.com/fatsheep9146/p/5116426.html
-
 https://www.jianshu.com/p/af9d7eee635e
+
+https://www.cnblogs.com/fatsheep9146/p/5116426.html
 
 [PC Assembly Language](https://pdos.csail.mit.edu/6.828/2017/readings/pcasm-book.pdf) 
