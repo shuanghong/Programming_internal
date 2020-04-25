@@ -489,7 +489,7 @@ SECTIONS
 }
 ```
 
-一个程序节的加载地址是将该节加载到内存中的内存地址, 物理地址. 程序节的链接地址是该段期望被执行的内存地址, , 虚拟地址.
+一个程序节的加载地址是将该节加载到内存中的内存地址, 是物理地址. 程序节的链接地址是该段期望被执行的内存地址, 是虚拟地址.
 
 链接器以各种方式对二进制文件中的链接地址进行编码, 编译器在编译的时候会认定程序将会连续的存放在从链接地址开始的内存空间. 程序的链接地址实际上就是链接器对代码中的变量、函数等符号进行一个地址编排, 赋予这些抽象的符号一个地址, 然后在程序中通过地址访问相应变量和函数. 使用ld等链接程序时通过`-Ttext xxxx` 和 `-Tdata yyyy` 指定代码段/数据段的链接地址, 运行期间代码指令和数据变量的地址都在相对 `-T` 指定的基址的某个偏移量处, 这个地址实际上就是链接地址. 例如当代码需要全局变量的地址时, 如果从一个没有链接的地址执行二进制文件, 那么二进制文件通常无法工作.
 
@@ -498,6 +498,47 @@ SECTIONS
 通常链接地址和加载地址通常是一样的, boot loader的链接地址和加载地址都是0x7C00, 在 `boot/Makefrag `里面定义. 而 kernel 是不一样的, 因为内核通常期望链接和运行在一个高的虚拟地址, 以便把低位的虚拟地址空间让给用户程序使用. 
 
 以前的机器通常没有 0xf0100000 这么大的物理内存, 解决方案就是在虚拟地址空间中 kernel 放在高地址处0xf0100000, 但是实际上还是存放在一个低的物理地址处 0x100000. 当用户程序想访问一个操作系统内核的指令时, 首先给出的是一个高的虚拟地址, 然后通过内存管理硬件(分段管理, 分页管理)将虚拟地址映射为真实的物理地址.
+
+## Exercise 5
+
+BIOS 默认把 boot loader 加载到物理地址 0x7C00 处, 若修改链接地址为 0x7C10, 则导致出错.
+
+1. 修改 `boot/Makefrag` 中的链接地址为 0x7C10. make clean, 再 make.
+
+   此时反汇编文件 `obj/boot/boot.asm` 中第一条指令地址已变为 0x7C10.
+
+   ![](images/BootLoader_0x7c10.JPG)
+
+2. 在一个 terminal 中执行 make qemu-gdb, 启动 QEMU. 另一个 terminal 中运行 make gdb.
+
+3.  `b *0x7c10` 在 0x7C10 地址设置了一个断点, 使用 `c` 命令继续执行到断点, 继续运行
+
+   ![](images/BootLoader_0x7c10_1.JPG)
+
+4. 问题出在[0:7c2d], 对应 `ljmp    $PROT_MODE_CSEG, $protcseg`. 应该跳转到的地址应该就是ljmp的下一条指令地址, 即0x7c32，但是这里给的值是0x7c42，下条指令变成了 0xfe05b.
+
+   ```
+     # Jump to next instruction, but in 32-bit code segment.
+     # Switches processor into 32-bit mode.
+     ljmp    $PROT_MODE_CSEG, $protcseg
+       7c3d:	ea 42 7c 08 00 66 b8 	ljmp   $0xb866,$0x87c42
+   
+   00007c42 <protcseg>:
+   
+     .code32                     # Assemble for 32-bit mode
+   protcseg:
+     # Set up the protected-mode data segment registers
+     movw    $PROT_MODE_DSEG, %ax    # Our data segment selector
+       7c42:	66 b8 10 00          	mov    $0x10,%ax
+   ```
+
+   链接地址为 0x7c00 是, [0:7c2d] 处跳转到下一条指令 0x7c32. 
+
+   ![](images/BootLoader_0x7c00_3.JPG)
+
+
+
+
 
 ## 参考
 
