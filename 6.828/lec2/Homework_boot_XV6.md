@@ -91,6 +91,7 @@ gs             0x0	0
 0x7bfc:	0x00007c4d	0x8ec031fa	0x8ec08ed8	0xa864e4d0
 0x7c0c:	0xb0fa7502	0xe464e6d1	0x7502a864	0xe6dfb0fa
 0x7c1c:	0x16010f60	0x200f7c78	0xc88366c0	0xc0220f01
+
 (gdb) x/10i
    0x10000f:	or     $0x10,%eax
    0x100012:	mov    %eax,%cr4
@@ -131,9 +132,7 @@ kernel: $(OBJS) entry.o entryother initcode kernel.ld
 
 要知道 kernel 入口时的堆栈数据, 需要从 boot 开始知道对堆栈作了哪些操作, 分为以下4个问题.
 
-1. 
-
-2. 堆栈指针的初始值?
+1. 堆栈指针的初始值?
 
    重启 QEMU GDB, 在 0x7c00 设置断点, 这是 boot 的起始地址.
 
@@ -362,7 +361,6 @@ kernel: $(OBJS) entry.o entryother initcode kernel.ld
    es             0x10	16
    fs             0x0	0
    gs             0x0	0
-   
    ```
 
 所以, 0x7bcc 地址上的数据是 `bootmain()` 在进入 kernel 时保存的数据, 返回地址等.
