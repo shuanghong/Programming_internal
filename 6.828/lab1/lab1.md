@@ -280,7 +280,7 @@ BIOS 从地址 0x7c00 开始将引导扇区加载到内存中, 所以这是引�
 
 在新映射建立之后, 如果映射没有就位, 第一个不能正常工作的指令是什么? 在 `kern/entry.S`  中注释掉 `movl %eax， %cr0`, 跟踪一下看看你是不是对的.
 
-Formatted Printing to the Console
+### Formatted Printing to the Console
 
 大多数人认为 printf() 这样的函数是理所当然的, 有时甚至认为它们是 C语言的“基本类型”. 但是在操作系统内核中, 我们必须自己实现所有的I/O.
 
@@ -332,8 +332,6 @@ Formatted Printing to the Console
    ```
 
 6. 假设 GCC 更改了它的调用约定, 以便按声明顺序在堆栈上放参数, 以便最后一个参数被放到最后, 将如何更改 `cprintf` 或者它的接口, 使它仍然能够传递可变数量的参数 ?
-
-
 
 ### **Exercise 8**
 

@@ -538,9 +538,95 @@ BIOS 默认把 boot loader 加载到物理地址 0x7C00 处, 若修改链接地�
 
 
 
+## Formatted Printing to the Console
 
+通读 `kern/printf.c, lib/printfmt.c, kern/console.c`, 了解他们的关系, 稍后的实验中将会清楚为什么 `printfmt.c` 位于单独的 `lib` 目录中.
 
-## 参考
+能够回答以下问题:
+
+1. 解释 `printf.c` 和 `console.c` 之间的接口. 特别是 `console.c` 输出什么函数? 这个函数如何被 `printf.c `使用?
+
+   ```
+   a. inc/stdio.h 中声明了所有 I/O 相关的函数, 其中 int	cprintf(const char *fmt, ...) 是被其他模块所使用的的标准输出函数, 其定义在 kern/printf.c
+   b. kern/printf.c 提供了实际需要调用的 I/O 接口 cprintf(), 接着调用 vcprintf(), 并继续调用 vprintfmt(). vprintfmt() 定义在 lib/printfmt.c
+   c. lib/printfmt.c 中的 vprintfmt() 是对输出进行格式化, 实现不同类型的输出(%s %d %p等). 最终会调用 kern/printf.c 提供的回调函数 putch()
+   d. putch()调用 kern/console.c 中的 cputchar() ---> cons_putc(): 输出一个字符到控制台上
+   e. cons_putc() 调用了三个函数:  serial_putc(), lpt_putc(), cga_putc(), 分别对应串口输出, 并口输出, 显示屏幕输出
+   
+   综上, printf.c 提供用户接口, printfmt.c 实现格式化输出, console.c 真正操作底层硬件的 I/O 端口输出字符到控制台上.
+   printf.c 和 console.c 之间的接口是 cputchar(). 
+   ```
+
+2. 从 `console.c` 中解释如下代码
+
+   		case '\b':
+   			if (crt_pos > 0) {
+   				crt_pos--;
+   				crt_buf[crt_pos] = (c & ~0xff) | ' ';
+   			}
+   			break;
+   	...
+   		default:
+   			crt_buf[crt_pos++] = c;		/* write the character */
+   			break;
+   	
+   	if (crt_pos >= CRT_SIZE) {
+   		int i;
+   		//清除buf中"第一行"的字符, ，即将第一行移出屏幕
+   		memmove(crt_buf, crt_buf + CRT_COLS, (CRT_SIZE - CRT_COLS) * sizeof(uint16_t));
+   		for (i = CRT_SIZE - CRT_COLS; i < CRT_SIZE; i++)
+   			crt_buf[i] = 0x0700 | ' '; // 最后一行用空格填充,需要用空格擦写才能去掉本来已显示的字符
+   		crt_pos -= CRT_COLS;	// 显示光标移动到屏幕最后一行的开始处
+   	}
+   	// crt_buf 在 cga_init() 初始化, 指向显示器I/O地址 = KERNBASE + CGA_BUF
+   	// CRT_SIZE = CRT_ROWS, CRT_COLS: CRT 显示器行列最大值,25x80
+   结合前一段代码, crt_pos 是缓冲区当前显示内容的最后一个字符的指针, 当c为'\b'时, 表示输入了退格, 所以此时要把缓冲区最后一个字节的指针减一, 相当于丢弃当前最后一个输入的字符. 如果不是特殊字符，那么就把字符的内容直接输入到缓冲区.
+
+   if 判断语句的功能是保证缓冲区中的最后显示的内容大小不要超过显示器的范围 CRT_SIZE, 实现屏幕滚动一行.
+
+   参考: 
+
+   https://www.cnblogs.com/fatsheep9146/p/5066690.html
+   https://github.com/shishujuan/mit6.828-2017/blob/master/docs/lab1-exercize.md
+   https://www.dingmos.com/2020/07/24/24.html
+
+3. 对于下面的问题, 可以参考第二讲的讲义. 这些注释涵盖了 GCC 在 x86 上的调用约定.
+
+   一步一步跟踪以下代码的执行:
+
+   ```
+   int x = 1, y = 3, z = 4;
+   cprintf("x %d, y %x, z %d\n", x, y, z);
+   ```
+
+   - 在调用 `cprintf()` 时, `fmt` 指向什么? `ap` 指向什么?
+   - 列出(按执行顺序) 对 `cons_putc, va_arg, vcprintf` 的每个调用. 对于 `cons_putc`, 也列出它的参数. 对于 `va_arg`, 列出调用前后 `ap` 指向的内容. 对于 `vcprintf` 列出它的两个参数的值.
+
+   参考:
+   https://github.com/Clann24/jos/tree/master/lab1
+
+4. 运行下面的代码:
+
+   ```
+   unsigned int i = 0x00646c72;
+   cprintf("H%x Wo%s", 57616, &i);
+   ```
+
+   输出是什么? 按照前面的练习一步一步地解释这个输出是如何得到的. [Here's an ASCII table](http://web.cs.mun.ca/~michael/c/ascii-table.html) 将字节映射到字符. 
+
+   输出取决于 x86 是 little-endian这一事实, 如果 x86 是 big-endian,为了得到相同的输出将 `i` 设置什么 ? 是否需要将 `57616` 改为不同的值 ?
+
+   [Here's a description of little- and big-endian](http://www.webopedia.com/TERM/b/big_endian.html) and [a more whimsical description](http://www.networksorcery.com/enp/ien/ien137.txt).
+
+5. 在下面的代码中,`'y='` 后面会打印什么? (注意:答案不是一个特定的值) 为什么会这样 ?
+
+   ```
+   cprintf("x=%d y=%d", 3);
+   ```
+
+6. 假设 GCC 更改了它的调用约定, 以便按声明顺序在堆栈上放参数, 以便最后一个参数被放到最后, 将如何更改 `cprintf` 或者它的接口, 使它仍然能够传递可变数量的参数 ?
+
+参考
 
 https://www.jianshu.com/p/af9d7eee635e
 
