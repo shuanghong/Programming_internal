@@ -182,7 +182,7 @@ kernel: $(OBJS) entry.o entryother initcode kernel.ld
    
    ```
 
-3. 当调用 `bootmain()` 时, 栈中数据是什么.
+2. 当调用 `bootmain()` 时, 栈中数据是什么.
 
    ```
    // bootblock.asm
@@ -193,6 +193,11 @@ kernel: $(OBJS) entry.o entryother initcode kernel.ld
        7c43:	bc 00 7c 00 00       	mov    $0x7c00,%esp
      call    bootmain
        7c48:	e8 e2 00 00 00       	call   7d2f <bootmain>
+     
+     # If bootmain returns (it shouldn't), trigger a Bochs
+     # breakpoint if running under Bochs, then loop.
+     movw    $0x8a00, %ax            # 0x8a00 -> port 0x8a00
+       7c4d:	66 b8 00 8a          	mov    $0x8a00,%ax
    ```
 
    `bootasm.S` 中, 将 `start`赋值给 `%esp`, 即 `%esp = 0x7c00`
@@ -269,8 +274,8 @@ kernel: $(OBJS) entry.o entryother initcode kernel.ld
    fs             0x0	0
    gs             0x0	0
    
-   // bootmain() 的第一条指令, 将ebp压栈, 栈顶 0x7c00 存储的是 ebp 寄存器的值, 即保存调用者的栈帧.
-   // 压栈后 esp-4, 0x7c00->0x7bfc
+   // bootmain() 的第一条指令, 将%ebp压栈, 即 (%esp-4)=%ebp, 地址0x7bfc保存调用函数的栈帧.
+   // 压栈后 %esp=0x7bfc, 注意这里是先移动栈帧,后存储寄存器
    (gdb) si
    => 0x7d2f:	push   %ebp
    0x00007d2f in ?? ()
@@ -294,9 +299,9 @@ kernel: $(OBJS) entry.o entryother initcode kernel.ld
    (gdb) 
    ```
 
-4. `bootmain()` 的第一条指令是将 ebp 压栈, 保存调用者的栈帧.
+4. `bootmain()` 的第一条指令是将 %ebp 压栈, 保存调用者的栈帧.
 
-5. 修改 eip (程序技术器/指令指针寄存器)值为 0x10000c 的 call 语句对栈做了什么?
+5. 修改 %eip (程序技术器/指令指针寄存器)值为 0x10000c 的 call 语句对栈做了什么?
 
    ```
    // bootblock.asm
@@ -339,7 +344,7 @@ kernel: $(OBJS) entry.o entryother initcode kernel.ld
    
    // eip=0x10000c, 即将进入 kernel.
    // esp=0x7bcc,0x7bd0 -> 0x7bcc, 说明call调用有压栈操作.
-   // 且 0x7bcc 地址上的数为 0x7db7, 此为 0x7db1 的下一条语句, 即返回地址.
+   // 且 0x7bcc 地址上的数为 0x7db7, 此为 0x7db1 的下一条语句, 即返回地址 7db7.
    // 所以 call 压栈之后同时把返回地址也放入栈中
    (gdb) si
    => 0x10000c:	mov    %cr4,%eax
@@ -374,4 +379,18 @@ kernel: $(OBJS) entry.o entryother initcode kernel.ld
 0x7c0c:	0xb0fa7502	0xe464e6d1	0x7502a864	0xe6dfb0fa
 0x7c1c:	0x16010f60	0x200f7c78	0xc88366c0	0xc0220f01
 ```
+
+结合 lec3 中的  [gdb](https://pdos.csail.mit.edu/6.828/2017/lec/gdb_slides.pdf) 教程.
+
+* 第一步: 调用 `bootmain()` 之前,  `%esp = 0x7c00`, 0x7c00 是 boot 起始地址, 0x7c00, 0x7c04...都是boot的内容. 栈是向下增长的, 即 0x7bfc 开始都是栈.
+
+* 第二步: `call    bootmain`时, 第一条指令将%ebp压栈, 即 (%esp-4)=%ebp, 地址0x7bfc保存调用函数的栈帧, 就是 `bootmain()`的下一条指令地址为返回地址: 0x7c4d
+
+  ​	![](homework_stack_1.JPG)
+
+* 第三步: 保存当前 CPU 寄存器以及申请堆栈空间保存局部变量
+
+* 第四步: 调用 `entry()` 时, 第一步依然是保存下一条指令的地址为返回地址: 0x7db7
+
+  ​	![](homework_stack_2.JPG)
 

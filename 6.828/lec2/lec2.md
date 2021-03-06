@@ -223,7 +223,7 @@ https://pdos.csail.mit.edu/6.828/2017/lec/l-x86.pdf
 
 - Functions can do anything that doesn't violate contract. By convention, GCC does more: 函数可以做任何不违反契约的事情, 按照惯例 GCC 会实现更多.
 
-  - each function has a stack frame marked by %ebp, %esp 每个函数都有个被 ebp, esp 的栈帧
+  - each function has a stack frame marked by %ebp, %esp: 每个函数都有个以 ebp, esp 标记的栈帧.
 
     ```
     		       +------------+   |
@@ -245,11 +245,11 @@ https://pdos.csail.mit.edu/6.828/2017/lec/l-x86.pdf
     		
     ```
 
-  - %esp can move to make stack frame bigger, smaller
+  - %esp can move to make stack frame bigger, smaller: %esp 可以移动使栈帧变大或变小
 
-  - %ebp points at saved %ebp from previous function, chain to walk stack : ebp 保存前一个函数的 ebp
+  - %ebp points at saved %ebp from previous function, chain to walk stack : %ebp 指向前一个函数的 %ebp, 链到步进堆栈.
 
-  - function prologue:
+  - function prologue: 函数序幕
 
     ```
     			pushl %ebp
@@ -266,7 +266,7 @@ https://pdos.csail.mit.edu/6.828/2017/lec/l-x86.pdf
 
     enter usually not used: 4 bytes vs 3 for pushl+movl, not on hardware fast-path anymore
 
-  - function epilogue can easily find return EIP on stack:
+  - function epilogue can easily find return EIP on stack: 函数结尾可以很容易地在堆栈上找到返回地址 EIP
 
     ```
     			movl %ebp, %esp
@@ -278,13 +278,12 @@ https://pdos.csail.mit.edu/6.828/2017/lec/l-x86.pdf
 
     ```
     			leave
-    		
     ```
-
-    leave used often because it's 1 byte, vs 3 for movl+popl
-
-    # ![](gcc_calling_conventions.JPG)
-
+    
+leave used often because it's 1 byte, vs 3 for movl+popl
+    
+# ![](gcc_calling_conventions.JPG)
+  
 - Big example:
 
   - C code
@@ -293,12 +292,11 @@ https://pdos.csail.mit.edu/6.828/2017/lec/l-x86.pdf
     		int main(void) { return f(8)+1; }
     		int f(int x) { return g(x); }
     		int g(int x) { return x+3; }
-    		
     ```
-
-  - assembler
-
-    ```
+    
+- assembler
+  
+  ```
     		_main:
     					prologue
     			pushl %ebp
@@ -339,9 +337,8 @@ https://pdos.csail.mit.edu/6.828/2017/lec/l-x86.pdf
     			movl %ebp, %esp
     			popl %ebp
     			ret
-    		
     ```
-
+  
 - Super-small _g :
 
   ```
@@ -349,9 +346,8 @@ https://pdos.csail.mit.edu/6.828/2017/lec/l-x86.pdf
   			movl 4(%esp), %eax
   			addl $3, %eax
   			ret
-  	
   ```
-
+  
 - Shortest `_f`?
 
 - Compiling, linking, loading:
