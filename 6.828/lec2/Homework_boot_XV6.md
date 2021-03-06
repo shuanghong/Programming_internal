@@ -394,3 +394,6 @@ kernel: $(OBJS) entry.o entryother initcode kernel.ld
 
   ​	![](homework_stack_2.JPG)
 
+最后, 附上一张 memory layout
+
+![](homework_memory_layout.JPG)
