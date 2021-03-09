@@ -538,6 +538,10 @@ BIOS 默认把 boot loader 加载到物理地址 0x7C00 处, 若修改链接地�
 
 
 
+## Physical Address Space
+
+![](images/physical_address_space_1.JPG)
+
 ## Formatted Printing to the Console
 
 通读 `kern/printf.c, lib/printfmt.c, kern/console.c`, 了解他们的关系, 稍后的实验中将会清楚为什么 `printfmt.c` 位于单独的 `lib` 目录中.
@@ -559,27 +563,34 @@ BIOS 默认把 boot loader 加载到物理地址 0x7C00 处, 若修改链接地�
 
 2. 从 `console.c` 中解释如下代码
 
-   		case '\b':
-   			if (crt_pos > 0) {
-   				crt_pos--;
-   				crt_buf[crt_pos] = (c & ~0xff) | ' ';
-   			}
-   			break;
-   	...
-   		default:
-   			crt_buf[crt_pos++] = c;		/* write the character */
-   			break;
-   	
-   	if (crt_pos >= CRT_SIZE) {
-   		int i;
-   		//清除buf中"第一行"的字符, ，即将第一行移出屏幕
-   		memmove(crt_buf, crt_buf + CRT_COLS, (CRT_SIZE - CRT_COLS) * sizeof(uint16_t));
-   		for (i = CRT_SIZE - CRT_COLS; i < CRT_SIZE; i++)
-   			crt_buf[i] = 0x0700 | ' '; // 最后一行用空格填充,需要用空格擦写才能去掉本来已显示的字符
-   		crt_pos -= CRT_COLS;	// 显示光标移动到屏幕最后一行的开始处
-   	}
-   	// crt_buf 在 cga_init() 初始化, 指向显示器I/O地址 = KERNBASE + CGA_BUF
-   	// CRT_SIZE = CRT_ROWS, CRT_COLS: CRT 显示器行列最大值,25x80
+   ```
+   case '\b':
+      	if (crt_pos > 0) {
+      		crt_pos--;
+      		crt_buf[crt_pos] = (c & ~0xff) | ' ';
+      		}
+      	break;
+      	...
+      	default:
+      		crt_buf[crt_pos++] = c;		/* write the character */
+      	break;
+      	
+   ```
+
+   ```
+   if (crt_pos >= CRT_SIZE) {
+      	int i;
+      	//清除buf中"第一行"的字符, ，即将第一行移出屏幕
+      	memmove(crt_buf, crt_buf + CRT_COLS, (CRT_SIZE - CRT_COLS) * sizeof(uint16_t));
+      	for (i = CRT_SIZE - CRT_COLS; i < CRT_SIZE; i++)
+      		crt_buf[i] = 0x0700 | ' '; // 最后一行用空格填充,需要用空格擦写才能去掉本来已显示的字符
+      	
+      	crt_pos -= CRT_COLS;	// 显示光标移动到屏幕最后一行的开始处
+    }
+      // crt_buf 在 cga_init() 初始化, 指向显示器I/O地址 = KERNBASE + CGA_BUF
+      // CRT_SIZE = CRT_ROWS, CRT_COLS: CRT 显示器行列最大值,25x80
+   ```
+
    结合前一段代码, crt_pos 是缓冲区当前显示内容的最后一个字符的指针, 当c为'\b'时, 表示输入了退格, 所以此时要把缓冲区最后一个字节的指针减一, 相当于丢弃当前最后一个输入的字符. 如果不是特殊字符，那么就把字符的内容直接输入到缓冲区.
 
    if 判断语句的功能是保证缓冲区中的最后显示的内容大小不要超过显示器的范围 CRT_SIZE, 实现屏幕滚动一行.
@@ -633,3 +644,34 @@ https://www.jianshu.com/p/af9d7eee635e
 https://www.cnblogs.com/fatsheep9146/p/5116426.html
 
 [PC Assembly Language](https://pdos.csail.mit.edu/6.828/2017/readings/pcasm-book.pdf) 
+
+
+
+## Exercise 9
+
+确定内核在哪里初始化它的堆栈, 以及堆栈在内存中的确切位置. 内核如何为其堆栈保留空间? 栈指针初始化指向的是这个保留区域的哪个“端”?
+
+在 entry.S中查找对 %ebp, %esp 的操作, 这两个寄存器构成被调函数的栈帧, 代码如下:
+
+	movl	$0x0,%ebp			# nuke frame pointer
+	# Set the stack pointer
+	movl	$(bootstacktop),%esp
+	
+	.data
+	###################################################################
+	# boot stack
+	###################################################################
+		.p2align	PGSHIFT		# force page alignment
+		.globl		bootstack
+	bootstack:
+		.space		KSTKSIZE
+		.globl		bootstacktop   
+	bootstacktop:
+在数据段中定义栈顶 bootstacktop之前, 首先分配了 KSTKSIZE的存储空间, 专门用于堆栈. KSTKSIZE = 8 * PGSIZE  = 8 * 4096 = 32KB.
+从 kernel.asm 中得知 bootstacktop = 0xf0110000, 所以堆栈空间是 0xf0110000-0xf0108000, 栈顶为 0xf0110000. 这是堆栈的虚拟空间地址, 其物理地址为 0x00110000-0x00108000.
+
+内核通过伪指令 `.space`分配了堆栈空间, 栈指针 `esp` 指向空间顶端.
+
+参考:
+https://www.cnblogs.com/fatsheep9146/p/5079177.html
+常用 ARM 指令及汇编.pdf

@@ -98,11 +98,13 @@ PC 的物理地址空间是硬连接的, 一般布局如下:
 
 ![physical_address_space](images/physical_address_space.JPG)
 
+![](images/physical_address_space_1.JPG)
+
 第一代 PC 基于16-bit 的 Intel 8088 处理器, 只能寻址1M的物理空间. 因此早期的 PC 物理地址空间起始于 0x00000000 终止于 0x000FFFFF, 即 0x00000000~0x000FFFFF. 并且早期 PC 只能使用"低内存" 640KB(0x00000000~0x000A0000)的区域作为随机存取存储器(RAM), 实际上非常早期的PC只能配置 16KB, 32KB, 64KB 的 RAM.
 
 0x000A0000~0x000FFFFF 的 384KB区域被硬件保留用于特殊用途, 如视频显示缓冲区和保存在非易失性存储器中的固件, 该保留区域最重要的部分是 BIOS, 占用 0x000F0000~0x000FFFFF 64KB 空间. 在早期PC中 BIOS 保存在只读存储器中(ROM), 但是现代 PC存储在 Flash 上. BIOS 负责执行基本的系统初始化, 如激活显卡, 检查安装的内存大小. 初始化之后 BIOS 从适当的位置如软盘、硬盘、CD-ROM或网络加载操作系统, 并将机器的控制权交给操作系统.
 
-Intel 最终在 80286 和 80386处理器上打破了1M内存空间限制, 分别支持 16M和 4GB 的内存空间, 但是 PC架构师们仍然保留了低 1MB 物理地址空间的原始布局, 以确保现有软件向后兼容. 因此现代 PC在物理内存 0x000A0000~0x00100000 有一个"洞", 将 RAM分为“低内存” 或 “传统内存”(前 640KB) 和“扩展内存”(其他所有内存). 此外在 32bit物理地址空间的最顶端的一些空间, 尤其是物理RAM, 现在通常由 BIOS为32位的 PCI设备保留.
+Intel 最终在 80286 和 80386处理器上打破了1M内存空间限制, 分别支持 16M和 4GB 的内存空间, 但是 PC架构师们仍然保留了低 1MB 物理地址空间的原始布局, 以确保现有软件向后兼容. 因此现代 PC在物理内存 0x000A0000~0x00100000 有一个"洞", 将 RAM分为“低内存” 或 “传统内存”(前 640KB) 和“扩展内存”(其他所有内存). 此外在 32bit物理地址空间的最顶端的一些空间, 尤其是物理 RAM, 现在通常由 BIOS为32位的 PCI设备保留.
 
 	这里“洞”的意思是早期 0x000A0000~0x00100000 的 384KB空间是保留用于特殊用途, 现在为了兼容以前的软件, 这块空间不会被使用, RAM的物理地址空间是 0x00000000~0x000A0000 + 0x00100000~xxxxxxxx(取决于RAM大小)
 
@@ -122,7 +124,7 @@ Intel 最终在 80286 和 80386处理器上打破了1M内存空间限制, 分别
 
 ![make_gdb](images/make_gdb.JPG)
 
-我们提供了一个 .gdbinit, 配置 GDB 在早期引导期间调试 16-bit 代码使用, 控制它附加到正在监听的QEMU. (如果无法工作, 可能需要在 home 目录下的 .gdbinit 中添加一个 add-auto-load-safe-path, 让 gdb 处理我们提供的 .gdbinit)
+我们提供了一个 .gdbinit, 配置 GDB 在早期引导期间调试 16-bit 代码使用, 控制它附加到正在监听的 QEMU. (如果无法工作, 可能需要在 home 目录下的 .gdbinit 中添加一个 add-auto-load-safe-path, 让 gdb 处理我们提供的 .gdbinit)
 
 下面这一行
 
@@ -347,7 +349,7 @@ BIOS 从地址 0x7c00 开始将引导扇区加载到内存中, 所以这是引�
 确定内核在哪里初始化它的堆栈, 以及堆栈在内存中的确切位置. 内核如何为其堆栈保留空间? 栈指针初始化指向的是这个保留区域的哪个“端”?
 ```
 
-x86 堆栈指针(`esp` 寄存器) 指向当前正在使用的堆栈的最低位置, 该位置以下为堆栈保留的区域中的所有内容都是空闲的. 将一个值压入堆栈先减少堆栈指针, 然后将该值写入堆栈指针指向的位置. 从堆栈中弹出一个值先读取堆栈指针指向的值, 然后增加堆栈指针. 在32 bit 模式下,堆栈只能保存32 bit 值, `esp` 总是可以被4整除. 各种x86指令, 比如 `call`都是“硬连接”的, 以便使用堆栈指针寄存器.
+x86 堆栈指针(`esp` 寄存器) 指向当前正在使用的堆栈的最低位置, 该位置以下为堆栈保留的区域中的所有内容都是空闲的. 将一个值压入堆栈先减少堆栈指针, 然后将该值写入堆栈指针指向的位置. 从堆栈中弹出一个值先读取堆栈指针指向的值, 然后增加堆栈指针. 在32 bit 模式下,堆栈只能保存32 bit 值, `esp` 总是可以被 4整除. 各种x86指令, 比如 `call`都是“硬连接”的, 以便使用堆栈指针寄存器.
 
 相反, `ebp` (基指针) 寄存器主要是通过软件约定与堆栈相关联的. 在进入C函数时, 函数的 *prologue* 代码通常通过将前一个函数的  `ebp` 压入堆栈来保存它, 然后在函数运行期间将当前 `esp` 值复制到 `ebp` 中. 
 
@@ -395,3 +397,40 @@ The `ebp` 值表示该函数使用的堆栈的基指针. 也就是说, 堆栈指
 ```
 
 此时，你的 backtrace 函数应该给你提供函数调用者在堆栈上的地址, 其导致 `mon_backtrace()` 被执行. 然而, 在实践中你通常希望知道与这些地址对应的函数名. 例如, 你可能想知道哪些函数可能包含错误导致内核崩溃.
+
+为了帮你实现这个功能, 我们提供了函数 `debuginfo_eip()`, 该函数在符号表里面查找 `eip`, 并返回该地址的调试信息. 函数定义在 `kern/kdebug.c`
+
+### Exercise 12
+
+```
+修改堆栈回溯函数以显示每个 eip的函数名, 源文件名和对应于该 eip的行号.
+在 debuginfo_eip中, __STAB_* 来自哪里? 这个问题的答案很长, 为了帮助你找到答案, 这里有一些你可能想做的事情:
+* look in the file kern/kernel.ld for __STAB_*
+* run objdump -h obj/kern/kernel
+* run objdump -G obj/kern/kernel
+* run gcc -pipe -nostdinc -O2 -fno-builtin -I. -MD -Wall -Wno-format -DJOS_KERNEL -gstabs -c -S kern/init.c, and look at init.s.
+* see if the bootloader loads the symbol table in memory as part of loading the kernel binary
+
+通过插入stab_binsearch的调用来查找地址的行号, 完成 debuginfo_eip的实现.
+在内核监视器中添加一个 backtrace命令, 并扩展 mon_backtrace 的实现来调用 debuginfo_eip, 并为每个堆栈帧打印一行:
+
+K> backtrace
+Stack backtrace:
+  ebp f010ff78  eip f01008ae  args 00000001 f010ff8c 00000000 f0110580 00000000
+         kern/monitor.c:143: monitor+106
+  ebp f010ffd8  eip f0100193  args 00000000 00001aac 00000660 00000000 00000000
+         kern/init.c:49: i386_init+59
+  ebp f010fff8  eip f010003d  args 00000000 00000000 0000ffff 10cf9a00 0000ffff
+         kern/entry.S:70: <unknown>+0
+K> 
+
+每一行给出了堆栈帧的 eip 的文件名和该文件中的行, 后面是函数名和 eip 与该函数的第一个指令的偏移量(例如, monitor+106 表示返回的 eip是 monitor开始位置后的106个字节).
+
+确保将文件和函数名打印在单独的一行上, 以避免混淆评分脚本.
+
+提示:printf 格式字符串提供了一种简单但晦涩的方式来打印像 STABS表中那样的非空结尾字符串. printf("%.*s", length, string) 打印 string的最大长度字符. 看看 printf 手册页, 了解为什么这样做.
+
+你可能会发现在回溯过程中丢失了一些函数. 例如可能会看到对 monitor()的调用, 但不会看到对 runcmd()的调用.这是因为编译器内联了一些函数调用. 其他优化可能会导致你看到意外的行号. 如果从 GNUMakefile 中去掉-O2, 回溯可能更有意义(但内核将运行得更慢).
+```
+
+这就完成了实验, 在实验目录中, 使用 git commit 提交修改, 并输入 make hand 提交代码.
