@@ -411,7 +411,7 @@ The `ebp` 值表示该函数使用的堆栈的基指针. 也就是说, 堆栈指
 * run gcc -pipe -nostdinc -O2 -fno-builtin -I. -MD -Wall -Wno-format -DJOS_KERNEL -gstabs -c -S kern/init.c, and look at init.s.
 * see if the bootloader loads the symbol table in memory as part of loading the kernel binary
 
-通过插入stab_binsearch的调用来查找地址的行号, 完成 debuginfo_eip的实现.
+通过插入 stab_binsearch的调用来查找地址的行号, 完成 debuginfo_eip的实现.
 在内核监视器中添加一个 backtrace命令, 并扩展 mon_backtrace 的实现来调用 debuginfo_eip, 并为每个堆栈帧打印一行:
 
 K> backtrace

@@ -770,5 +770,155 @@ f0100064:	e8 d7 ff ff ff       	call   f0100040 <test_backtrace>
  `test_backtrace(4)` %ebp =  0xf010ffb8, %esp = 0xf010ffa0
  `test_backtrace(3)` %ebp =  0xf010ff98, %esp = 0xf010ff80
  `test_backtrace(2)` %ebp =  0xf010ff78, %esp = 0xf010ff60
- `test_backtrace(3)` %ebp =  0xf010ff58, %esp = 0xf010ff40
- `test_backtrace(3)` %ebp =  0xf010ff38, %esp = 0xf010ff20
+ `test_backtrace(1)` %ebp =  0xf010ff58, %esp = 0xf010ff40
+ `test_backtrace(0)` %ebp =  0xf010ff38, %esp = 0xf010ff20
+
+## Exercise 11
+
+```
+int mon_backtrace(int argc, char **argv, struct Trapframe *tf)
+{
+    uint32_t *ebp_reg = (uint32_t *)read_ebp();
+    // uint32_t ebp_addr_value = *ebp_reg;
+    uint32_t eip_reg;
+
+	while(ebp_reg != 0)
+    {
+        eip_reg = *(ebp_reg + 1);
+        cprintf("ebp %08x eip %08x args %08x %08x %08x %08x %08x\n", ebp_reg, eip_reg, *(ebp_reg+2), *(ebp_reg)+3, *(ebp_reg+4), *(ebp_reg+5), *(ebp_reg+6));
+
+        //ebp_reg = (uint32_t *)(ebp_addr_value);
+        //cprintf("ebp %08x \n", ebp_reg);
+        ebp_reg = (uint32_t *)(*ebp_reg);
+        cprintf("ebp %08x\n", ebp_reg);
+    }
+	return 0;
+}
+```
+
+下面分析代码实现, 每一行都很重要！！！
+
+1. 参照 lab1 exercise11 的说明
+
+   ```
+   int *p = (int*)100;		
+   // 指针变量 p=100, 指针指向即地址100上存储一个 int 数据. 
+   // (int*)(p + 1)=104, 对指针加减一个整数相当于指针移动所指数据类型的整数倍, 这里是 1x4.
+   // 参考 "指针的算术运算" https://www.runoob.com/w3cnote/c-pointer-detail.html
+   // 代码中 read_ebp() 获取当前函数的 %ebp, ebp_reg+1 也相当于移动了 4个 byte
+   ```
+
+2. 参考  `i386_init()` 调用  `test_backtrace(5)`的过程, 当栈帧构建完成以后, %ebp = 0xf010ffd8,%esp = 0xf010ffc0. 
+   逆向来看, %ebp 前一个压栈的就是 eip(保存下一条指令地址, 也是返回地址), 所以取其地址上的值  [0xf010ffd8+4] = [0xf010ffdc] =  0xf01000ea
+   再往前是参数压栈, 所以才有下面的代码.
+
+   ```
+   eip_reg = *(ebp_reg + 1);
+   args = *(ebp_reg + 2), *(ebp_reg + 3)...
+   ```
+
+3. 最重要的一行代码, 打印完成以后新的 %ebp 怎么获取? 再次参考 `i386_init()` 调用  `test_backtrace(5)`的过程,  %ebp = 0xf010ffd8 对应地址上的值就是前一个调用函数的 %ebp, 即新的 %ebp = [%ebp] = [0xf010ffd8] = 0xf010fff8, 将之强转为指针.
+
+   ```
+   ebp_reg = (uint32_t *)(*ebp_reg);
+   ```
+
+   并且 %ebp 在 entry.S中调用  `i386_init()` 之前赋值为 0, 以此为循环结束条件.
+
+代码执行结果及注释如下, ebp 是寄存器本身值(地址), eip 即之后的都是取的地址上的数据值.
+
+```
+entering test_backtrace 5
+entering test_backtrace 4
+entering test_backtrace 3
+entering test_backtrace 2
+entering test_backtrace 1
+entering test_backtrace 0
+// 当前函数 mon_backtrace的信息
+ebp f010ff18 eip f0100087 args 00000000 f010ff3b 00000000 00000000 f0100957
+// 调用函数即 test_backtrace(0)的 %ebp
+ebp f010ff38
+
+// test_backtrace(0)的信息
+ebp f010ff38 eip f0100069 args 00000000 f010ff5b f010ff78 00000000 f0100957
+// 调用函数 test_backtrace(1)的 %ebp
+ebp f010ff58
+
+// test_backtrace(1)的信息
+ebp f010ff58 eip f0100069 args 00000001 f010ff7b f010ff98 00000000 f0100957
+// 调用函数 test_backtrace(2)的 %ebp
+ebp f010ff78
+
+// test_backtrace(2)的信息
+ebp f010ff78 eip f0100069 args 00000002 f010ff9b f010ffb8 00000000 f0100957
+// 调用函数 test_backtrace(3)的 %ebp
+ebp f010ff98
+
+// test_backtrace(3)的信息
+ebp f010ff98 eip f0100069 args 00000003 f010ffbb 00000000 00000000 00000000
+// 调用函数 test_backtrace(4)的 %ebp
+ebp f010ffb8
+
+// test_backtrace(4)的信息
+ebp f010ffb8 eip f0100069 args 00000004 f010ffdb 00000000 00010094 00010094
+// 调用函数 test_backtrace(5)的 %ebp
+ebp f010ffd8
+
+// test_backtrace(5)的信息
+ebp f010ffd8 eip f01000ea args 00000005 f010fffb 00000644 00000000 00000000
+// 调用函数 i386_init()的 %ebp
+ebp f010fff8
+
+// i386_init()的信息
+ebp f010fff8 eip f010003e args 00111021 00000003 00000000 00000000 00000000
+ebp 00000000
+
+leaving test_backtrace 0
+leaving test_backtrace 1
+leaving test_backtrace 2
+leaving test_backtrace 3
+leaving test_backtrace 4
+leaving test_backtrace 5
+```
+
+注意代码中的注释部分: 
+
+```
+// uint32_t ebp_addr_value = *ebp_reg;
+...
+// ebp_reg = (uint32_t *)(ebp_addr_value);
+// cprintf("ebp %08x \n", ebp_reg);
+```
+
+本来以为实现功能一样, 实际上只实现了当前函数的信息打印, 因为没有进一步的更新 %ebp 的值, 函数会无限循环,如下. 所以 %ebp 的更新是实现回溯栈最关键的一步.
+
+```
+ebp f010ff18 eip f0100087 args 00000000 f010ff3b 00000000 00000000 f010095d
+ebp f010ff38 
+ebp f010ff38 eip f0100069 args 00000000 f010ff5b f010ff78 00000000 f010095d
+ebp f010ff38 
+ebp f010ff38 eip f0100069 args 00000000 f010ff5b f010ff78 00000000 f010095d
+ebp f010ff38 
+...
+```
+
+另外下面的代码实现也值得使用, 参考 https://github.com/clpsz/mit-jos-2014/tree/master/Lab1/Exercise11
+
+```
+ int  mon_backtrace(int argc, char **argv, struct Trapframe *tf)
+ {
++    uint32_t ebp, *p;
++
++    ebp = read_ebp();
++    while (ebp != 0)
++    {
++        p = (uint32_t *) ebp;
++        cprintf("ebp %x eip %x args %08x %08x %08x %08x %08x\n", ebp, p[1], p[2], p[3], p[4], p[5], p[6]);
++        ebp = p[0];
++    }
++    
++    return 0;
+ }
+```
+
+`p[i]` 与 `*(p+i)`一样, 都是取地址上的值. `&p[i]` 与 `(p+i)` 一样, 取地址.
