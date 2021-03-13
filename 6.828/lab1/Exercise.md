@@ -744,8 +744,8 @@ si 单步执行, `push   %ebp`,  将%ebp压栈, 保存调用函数的栈基址, 
 所以子程序调用的通用过程如下:
 
 1. 保存参数到栈中(或CPU寄存器), movl   $0x5,(%esp), %esp 没变, 而且还是调用者的栈 0xf010ffe0
-2. call 指令, 返回地址入栈, %esp=%esp-4, 0xf010ffdc
-3. 保存调用者的栈帧信息 %ebp 到栈中, %esp=%esp-4, 0xf010ffd8
+2. call 指令, 返回地址入栈, %esp=%esp-4, 0xf010ffdc, [0xf010ffdc] = 0xf01000ea
+3. 保存调用者的栈帧信息 %ebp 到栈中, %esp=%esp-4=0xf010ffd8, [0xf010ffd8] = 0xf010fff8
 4. 更新子程序的栈帧信息, %ebp = %esp, 被调者的栈基址
 5. 移动 %esp 开辟栈空间保存子程序的本地变量, %esp = %esp-20
 
