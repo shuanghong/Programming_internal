@@ -675,3 +675,100 @@ https://www.cnblogs.com/fatsheep9146/p/5116426.html
 参考:
 https://www.cnblogs.com/fatsheep9146/p/5079177.html
 常用 ARM 指令及汇编.pdf
+
+## Exercise 10
+
+熟悉x86上的C调用约定, 在 `obj/kern/kernel.asm`中找到 `test_backtrace`函数的地址. 在那里设置一个断点, 并检查内核启动后每次调用它时会发生什么. `test_backtrace` 的每个递归嵌套层在堆栈上压入多少32-bit 的字, 这些字是什么?
+
+ `obj/kern/kernel.asm`中  `test_backtrace`的指令地址为 0xf0100040, 在这里设置断点, 开始调试.
+
+并且, 每一次进入 `test_backtrace` ,`cprintf("entering test_backtrace %d\n", x)` 之前, 都要执行过程调用的通用操作: 保存要传递的参数以及调用函数 `i386_init()` 的栈帧信息等, 如下：
+
+```
+	// Test the stack backtrace function (lab 1 only)
+	test_backtrace(5);
+f01000de:	c7 04 24 05 00 00 00 	movl   $0x5,(%esp)
+f01000e5:	e8 56 ff ff ff       	call   f0100040 <test_backtrace>
+
+void
+test_backtrace(int x)
+{
+f0100040:	55                   	push   %ebp
+f0100041:	89 e5                	mov    %esp,%ebp
+f0100043:	53                   	push   %ebx
+f0100044:	83 ec 14             	sub    $0x14,%esp
+f0100047:	8b 5d 08             	mov    0x8(%ebp),%ebx
+	cprintf("entering test_backtrace %d\n", x);
+...
+}
+```
+
+为了观察调用前的准备工作, 把断点分别设在 0xf01000de 和 0xf0100040
+
+设断点 0xf01000de, 执行到断点, 下一条要执行的指令, `movl   $0x5,(%esp)` , %eip = 0xf01000de, %esp = 0xf010ffe0, 如下图:
+
+![](images/Exercise10_0.JPG)
+
+si 单独执行  `movl   $0x5,(%esp)` , 则[0xf010ffe0] = 5, 如下图. 下一条要执行的指令: `call   f0100040 <test_backtrace>`, %eip = 0xf01000e5.
+
+![](images/Exercise10_1.JPG)
+
+si 单独执行  : `call   f0100040 <test_backtrace>`,  如下图. 此时 %esp =0xf010ffe0-4 = 0xf010ffdc. 并且 [0xf010ffdc] = 0xf01000ea, 这是 `test_backtrace` 调用之后的返回地址.
+
+![](images/Exercise10_2.JPG)
+
+所以, call 指令做了两件事, 1. 压栈; 2. 将返回地址保存在栈中. 在 lec2 homework 中同样会有call 指令.
+
+如果是断点直接设在 0xf0100040, 打印CPU 寄存器信息, 此时已经执行完了 call 指令, 无法完全看出子程序调用前的准备工作. 如下图. 
+调用前, %ebp = 0xf010fff8,  %esp = 0xf010ffe0, 这就是调用函数`i386_init()` 的栈帧信息.
+
+![](images/Exercise10_3.JPG)
+
+进入 `test_backtrace(5)`之后的操作如下:
+
+```
+f0100040:	55                   	push   %ebp
+f0100041:	89 e5                	mov    %esp,%ebp
+f0100043:	53                   	push   %ebx
+f0100044:	83 ec 14             	sub    $0x14,%esp
+```
+
+si 单步执行, `push   %ebp`,  将%ebp压栈, 保存调用函数的栈基址, 执行后 %esp = %esp-4 = 0xf010ffd8, 该地址上保存了 %ebp 的值 0xf010fff8, 所以压栈过程是先移动 sp, 后保存寄存器;
+
+`mov    %esp,%ebp`  %ebp的值更新为 %esp的值, %ebp 在前面已经保存, 这里更新后即为子函数  `test_backtrace(5)` 的栈基址, %ebp = 0xf010ffd8;
+
+`push %ebx`  %ebx寄存器的值压入堆栈, 此时  %esp = %esp-4 = 0xf010ffd4, 因为 %ebx 可能被这个子程序所使用, 所以必须把它之前的值保存;
+
+`sub $0x14, %esp` %esp = %esp - 0x14 = 0xf010ffd4 - 20 = 0xf010ffc0, 这是给 `test_backtrace(5)`子函数分配一个大小为 20个存储单元的栈空间, 用于存储临时变量.
+
+所以子程序调用的通用过程如下:
+
+1. 保存参数到栈中(或CPU寄存器), movl   $0x5,(%esp), %esp 没变, 而且还是调用者的栈 0xf010ffe0
+2. call 指令, 返回地址入栈, %esp=%esp-4, 0xf010ffdc
+3. 保存调用者的栈帧信息 %ebp 到栈中, %esp=%esp-4, 0xf010ffd8
+4. 更新子程序的栈帧信息, %ebp = %esp, 被调者的栈基址
+5. 移动 %esp 开辟栈空间保存子程序的本地变量, %esp = %esp-20
+
+![](images/Exercise10_4.JPG)
+
+以上过程的第 4 步开始才是被调者的栈帧开始, 所以 X86 的调用约定是入参, 返回地址, 调用者的栈帧信息都在调用者的栈中,  如下图 lec2 的教程. 而 ARM 的调用约定是 入参, 返回地址, 调用者的栈帧信息都保存在子程序的栈中.
+
+调用者保存入参, 返回地址; 被调者保存调用者的栈帧信息.
+
+![](images/Exercise10_gcc_calling_conventions.JPG)
+
+上述命令执行完成后, %ebp = 0xf010ffd8,%esp = 0xf010ffc0,  接着调用 `test_backtrace(4)`, 类似的过程. %ebp 在第3步更新, 相对于前一个 %esp, 递减 8, 所以 %ebp= 0xf010ffc0-8= 0xf010ffb8. %esp 不仅要考虑 `test_backtrace`的递归调用, 还有 `cprintf(...);`, 调试结果看会递减 32.
+
+```
+		test_backtrace(x-1);
+f010005e:	8d 43 ff             	lea    -0x1(%ebx),%eax
+f0100061:	89 04 24             	mov    %eax,(%esp)
+f0100064:	e8 d7 ff ff ff       	call   f0100040 <test_backtrace>
+```
+
+ `test_backtrace(5)` %ebp = 0xf010ffd8, %esp = 0xf010ffc0
+ `test_backtrace(4)` %ebp =  0xf010ffb8, %esp = 0xf010ffa0
+ `test_backtrace(3)` %ebp =  0xf010ff98, %esp = 0xf010ff80
+ `test_backtrace(2)` %ebp =  0xf010ff78, %esp = 0xf010ff60
+ `test_backtrace(3)` %ebp =  0xf010ff58, %esp = 0xf010ff40
+ `test_backtrace(3)` %ebp =  0xf010ff38, %esp = 0xf010ff20
