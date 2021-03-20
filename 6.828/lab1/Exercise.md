@@ -71,7 +71,7 @@ Boot loader 位于这512字节中, 由一个汇编语言源文件 `boot/boot.S` 
 
 即地址转换过程: segment:offset --> 逻辑地址---> 分段管理 ---> 虚拟地址/线性地址 ---> 分页机制 ---> 物理地址, 参考下图(来自 XV6 Appendix B). 
 
-　　![img](https://images2015.cnblogs.com/blog/809277/201601/809277-20160109142207371-383459687.png)
+![](images/Logical_linear_physical_address.JPG)
 
 在 boot loader中, 并没有开启分页, 所以计算出来的线性地址就是真实要访问的内存物理地址.
 
@@ -79,7 +79,7 @@ Boot loader 位于这512字节中, 由一个汇编语言源文件 `boot/boot.S` 
 
 首先, 在计算机中存在两个表: GDT(全局段描述符表), LDT(本地段描述符表). 他们都是用来存放关于某个运行在内存中的程序的分段信息的. 比如某个程序的代码段是从哪里开始, 有多大; 数据段又是从哪里开始, 有多大. GDT 表是全局可见的, 也就是说每一个运行在内存中的程序都能看到这个表, 所以操作系统内核程序的段信息就存在这里面. LDT 表是每一个在内存中的程序都包含的, 里面指明了每一个程序的段信息, 这两个表的结构如下图所示:
 
-　　![img](https://images2015.cnblogs.com/blog/809277/201601/809277-20160109143519184-1430449279.png)
+![](images/Segment_translation.JPG)
 
 从图中可以看到, 无论是GDT, 还是LDT, 每一个表项都包括三个字段:
 
@@ -709,11 +709,11 @@ f0100047:	8b 5d 08             	mov    0x8(%ebp),%ebx
 
 ![](images/Exercise10_0.JPG)
 
-si 单独执行  `movl   $0x5,(%esp)` , 则[0xf010ffe0] = 5, 如下图. 下一条要执行的指令: `call   f0100040 <test_backtrace>`, %eip = 0xf01000e5.
+si 单步执行  `movl   $0x5,(%esp)` , 则[0xf010ffe0] = 5, 如下图. 下一条要执行的指令: `call   f0100040 <test_backtrace>`, %eip = 0xf01000e5.
 
 ![](images/Exercise10_1.JPG)
 
-si 单独执行  : `call   f0100040 <test_backtrace>`,  如下图. 此时 %esp =0xf010ffe0-4 = 0xf010ffdc. 并且 [0xf010ffdc] = 0xf01000ea, 这是 `test_backtrace` 调用之后的返回地址.
+si 单步执行  : `call   f0100040 <test_backtrace>`,  如下图. 此时 %esp =0xf010ffe0-4 = 0xf010ffdc. 并且 [0xf010ffdc] = 0xf01000ea, 这是 `test_backtrace` 调用之后的返回地址.
 
 ![](images/Exercise10_2.JPG)
 
