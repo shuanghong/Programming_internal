@@ -12,6 +12,10 @@
 
 在本实验及后面的实验中, 将逐步构建你的内核. 我们也会提供给你一些额外的来源. 要获取源码, 使用 Git 提交 lab1 以来所做的修改(如果有的话), 获取最新版本的课程仓库, 然后在 lab2 分支 origin/lab2 的基础上创建一个本地分支 lab2
 
+```
+git checkout -b lab2 origin/lab2
+```
+
 `git checkout -b` 命令实际上做了两件事: 首先基于 origin/lab2 分支创建一个本地分支lab2, 其次它更改你的lab目录的内容以反映存储在 lab2 分支上的文件.
 Git 允许使用 `git checkout branch-name `在现有分支之间切换, 不过在切换到另一个分支之前, 你应该提交一个分支上的任何未完成的更改.
 
@@ -154,3 +158,53 @@ check_page(), called from mem_init(), tests your page table management routines.
 check_page() 测试页表管理例程, 在继续之前应该确保它报告成功.
 ```
 
+## Part 3: Kernel Address Space
+
+JOS 将处理器的32位线性地址空间分成两部分. 用户环境(进程), 我们将在 lab 3 中开始加载和运行他, 可以控制下层的布局和内容, 而内核始终保持对上层的完全控制. 这个分界线是由  `inc/memlayout.h`中的符号`ULIM` 定义的, 为内核保留大约 256MB 的虚拟地址空间. 这就解释了为什么我们需要在 lab 1中给内核如此高的链接地址, 否则内核的虚拟地址空间将没有足够的空间同时映射到它下面的用户环境中.
+
+对于本部分和以后的实验, 参考  `inc/memlayout.h`  中的 JOS 内存布局图会有帮助.
+
+### Permissions and Fault Isolation
+
+权限和错误隔离.
+
+因为内核和用户内存都存在于每个环境的地址空间中, 所以我们必须使用 x86页表中的权限位来允许用户代码只访问地址空间的用户部分. 否则, 用户代码中的错误可能会覆盖内核数据, 导致崩溃或更难以分析的故障; 用户代码还可能窃取其他环境的私有数据.  注意, 可写权限位 (`PTE_W`) 会同时影响用户代码和内核代码!
+
+用户环境将没有权限访问任何高于 ULIM 的内存, 而内核将能够读写这些内存. 对于地址范围 [UTOP,ULIM], 内核和用户环境都有相同的权限: 他们可以读但不能写这个地址范围. 这个地址范围用于向用户环境公开某些只读的内核数据结构. 最后, UTOP 下面的地址空间是供用户环境使用的, 用户环境将设置访问此内存的权限.
+
+### Initializing the Kernel Address Space
+
+现在, 你将在 UTOP上面设置地址空间: 地址空间的内核部分. `inc/memlayout.h` 显示了你应该使用的布局, 你将使用刚才编写的函数来设置适当的线性到物理映射.
+
+### Exercise 5
+
+```
+在调用 check_page() 之后, 填补 mem_init() 中缺失的代码
+```
+
+### Question
+
+```
+2. What entries (rows) in the page directory have been filled in at this point? What addresses do they map and where do they point? In other words, fill out this table as much as possible:
+Entry	Base Virtual Address	Points to (logically):
+1023	?	Page table for top 4MB of phys memory
+1022	?	?
+.	?	?
+.	?	?
+.	?	?
+2	0x00800000	?
+1	0x00400000	?
+0	0x00000000	[see next question]
+We have placed the kernel and user environment in the same address space. Why will user programs not be able to read or write the kernel's memory? What specific mechanisms protect the kernel memory?
+What is the maximum amount of physical memory that this operating system can support? Why?
+How much space overhead is there for managing memory, if we actually had the maximum amount of physical memory? How is this overhead broken down?
+Revisit the page table setup in kern/entry.S and kern/entrypgdir.c. Immediately after we turn on paging, EIP is still a low number (a little over 1MB). At what point do we transition to running at an EIP above KERNBASE? What makes it possible for us to continue executing at a low EIP between when we enable paging and when we begin running at an EIP above KERNBASE? Why is this transition necessary?
+```
+
+### Address Space Layout Alternatives
+
+地址空间布局备选方案.
+
+我们在JOS中使用的地址空间布局并不是唯一可能. 一个操作系统可以把内核映射到低线性地址, 而把线性地址空间的上半部分留给用户进程. x86 内核一般不采取这种方法, 但是因为一个 x86的向后兼容模式, 称为虚拟 8086模式,是处理器“硬连接”地使用底部的线性地址空间, 因此如果内核映射到这里则不能使用.
+
+甚至有可能,虽然更加困难, 设计内核为了不保留任何固定部分处理器的线性或虚拟地址空间本身, 而是有效地允许用户级进程无限制使用的整个 4GB 的虚拟地址空间,同时还从这些进程中充分保护内核, 保护各自不同的进程!
