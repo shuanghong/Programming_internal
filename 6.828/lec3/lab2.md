@@ -174,7 +174,7 @@ JOS 将处理器的32位线性地址空间分成两部分. 用户环境(进程),
 
 ### Initializing the Kernel Address Space
 
-现在, 你将在 UTOP上面设置地址空间: 地址空间的内核部分. `inc/memlayout.h` 显示了你应该使用的布局, 你将使用刚才编写的函数来设置适当的线性到物理映射.
+现在, 你将在 `UTOP`上面设置地址空间: 地址空间的内核部分. `inc/memlayout.h` 显示了你应该使用的布局, 你将使用刚才编写的函数来设置适当的线性到物理映射.
 
 ### Exercise 5
 
@@ -185,20 +185,37 @@ JOS 将处理器的32位线性地址空间分成两部分. 用户环境(进程),
 ### Question
 
 ```
-2. What entries (rows) in the page directory have been filled in at this point? What addresses do they map and where do they point? In other words, fill out this table as much as possible:
-Entry	Base Virtual Address	Points to (logically):
-1023	?	Page table for top 4MB of phys memory
-1022	?	?
-.	?	?
-.	?	?
-.	?	?
-2	0x00800000	?
-1	0x00400000	?
-0	0x00000000	[see next question]
-We have placed the kernel and user environment in the same address space. Why will user programs not be able to read or write the kernel's memory? What specific mechanisms protect the kernel memory?
-What is the maximum amount of physical memory that this operating system can support? Why?
-How much space overhead is there for managing memory, if we actually had the maximum amount of physical memory? How is this overhead broken down?
-Revisit the page table setup in kern/entry.S and kern/entrypgdir.c. Immediately after we turn on paging, EIP is still a low number (a little over 1MB). At what point do we transition to running at an EIP above KERNBASE? What makes it possible for us to continue executing at a low EIP between when we enable paging and when we begin running at an EIP above KERNBASE? Why is this transition necessary?
+2. What entries (rows) in the page directory have been filled in at this point? What addresses do they map and where do they point? In other words, fill out this table as much as possible: 此时页面目录中的哪些条目(行)已被填充? 它们映射了哪些地址, 指向哪里? 换句话说, 尽可能多地填写这个表格.
+```
+
+| Entry | Base Virtual Address | Points to (logically):                |
+| ----- | -------------------- | ------------------------------------- |
+| 1023  | ?                    | Page table for top 4MB of phys memory |
+| 1022  | ?                    | ?                                     |
+| .     | ?                    | ?                                     |
+| .     | ?                    | ?                                     |
+| .     | ?                    | ?                                     |
+| 2     | 0x00800000           | ?                                     |
+| 1     | 0x00400000           | ?                                     |
+| 0     | 0x00000000           | [see next question]                   |
+
+```
+3. We have placed the kernel and user environment in the same address space. Why will user programs not be able to read or write the kernel's memory? What specific mechanisms protect the kernel memory?
+我们将内核和用户环境放在同一个地址空间中, 为什么用户程序不能读或写内核的内存? 有哪些特定的机制保护内核内存?
+```
+
+```
+4. What is the maximum amount of physical memory that this operating system can support? Why? 这个操作系统能支持的最大物理内存量是多少? 为什么?
+```
+
+```
+5. How much space overhead is there for managing memory, if we actually had the maximum amount of physical memory? How is this overhead broken down?
+如果我们有最大的物理内存，那么管理内存的空间开销是多少? 管理费如何划分?
+```
+
+```
+6. Revisit the page table setup in kern/entry.S and kern/entrypgdir.c. Immediately after we turn on paging, EIP is still a low number (a little over 1MB). At what point do we transition to running at an EIP above KERNBASE? What makes it possible for us to continue executing at a low EIP between when we enable paging and when we begin running at an EIP above KERNBASE? Why is this transition necessary?
+重新查看 kern/entry.S 和 kern/entrypgdir.c中的页表设置. 在我们打开分页之后, EIP 仍然是一个很小的数字(略大于1MB). 在什么点上我们可以过渡到在 KERNBASE之上的 EIP上运行? 是什么让我们在启用分页和开始运行于KERNBASE 之上的 EIP之间的低EIP上继续执行? 为什么这种转变是必要的?
 ```
 
 ### Address Space Layout Alternatives
@@ -207,4 +224,26 @@ Revisit the page table setup in kern/entry.S and kern/entrypgdir.c. Immediately 
 
 我们在JOS中使用的地址空间布局并不是唯一可能. 一个操作系统可以把内核映射到低线性地址, 而把线性地址空间的上半部分留给用户进程. x86 内核一般不采取这种方法, 但是因为一个 x86的向后兼容模式, 称为虚拟 8086模式,是处理器“硬连接”地使用底部的线性地址空间, 因此如果内核映射到这里则不能使用.
 
-甚至有可能,虽然更加困难, 设计内核为了不保留任何固定部分处理器的线性或虚拟地址空间本身, 而是有效地允许用户级进程无限制使用的整个 4GB 的虚拟地址空间,同时还从这些进程中充分保护内核, 保护各自不同的进程!
+甚至有可能,虽然更加困难, 设计内核为了不保留任何固定部分处理器的线性或虚拟地址空间本身, 而是有效地允许用户级进程无限制使用的整个 4GB 的虚拟地址空间, 同时还从这些进程中充分保护内核, 保护各自不同的进程!
+
+```
+挑战!
+概述如何设计内核以允许用户环境不受限制地使用完整的4GB虚拟地址空间和线性地址空间。
+
+Hint: the technique is sometimes known as "follow the bouncing kernel."
+提示:这种技术有时被称为“跟随弹跳内核”。
+在你的设计中, 一定要准确地说明当处理器在内核模式和用户模式之间转换时必须发生什么,以及内核如何完成这种转换.
+还要描述在这种方案中内核如何访问物理内存和I/O设备, 以及在系统调用期间内核如何访问用户环境的虚拟地址空间等.
+最后, 从灵活性、性能、内核复杂性和您可以想到的其他因素方面考虑并描述这种方案的优缺点.
+```
+
+```
+挑战!
+由于 JOS内核的内存管理系统只根据页面粒度分配和释放内存, 所以我们没有任何东西可以与内核中可以使用的通用malloc/free工具相媲美.
+如果我们希望支持某些类型的I/O设备, 这些设备需要大于 4KB的物理连续缓冲区, 或者我们希望用户级环境(而不仅仅是内核)能够分配和映射 4MB超页以获得最大的处理器效率, 那么这可能会成为一个问题.
+(请参阅前面关于PTE_PS的挑战问题。)
+一般化内核的内存分配系统, 以支持各种2的幂分配单元大小的页面, 从 4KB到你选择的合理最大值.
+确保您能够根据需要将较大的分配单元划分为较小的分配单元, 并在可能的情况下将多个较小的分配单元合并为较大的分配单元.
+考虑在这样的系统中可能出现的问题.
+```
+
