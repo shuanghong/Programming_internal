@@ -238,7 +238,7 @@ https://www.cnblogs.com/fatsheep9146/p/5116426.html
 	---> `offset = (offset / SECTSIZE) + 1;` 
 	---> `readsect((uint8_t*) pa, offset);`
 
-读取4K 数据, 包括ELF头部和程序头表到物理地址 0x10000, offset =1 表示从扇区1开始, `readsect()`是以扇区为读取.
+读取 512 bytes *8 = 4K 数据, 包括ELF头部和程序头表到物理地址 0x10000, offset =1 表示从扇区1开始, `readsect()`是以扇区为读取.
 
 	#define SECTSIZE	512
 	#define ELFHDR		((struct Elf *) 0x10000) // scratch space
