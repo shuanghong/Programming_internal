@@ -20,7 +20,7 @@ https://github.com/clpsz/mit-jos-2014/tree/master/Lab2/Exercise01
 
 ## 背景知识
 
-#### 启动过程
+#### 启动过程及内存映射
 
 由 lab1 可知, 整个系统的启动过程如下:
 
@@ -28,10 +28,56 @@ https://github.com/clpsz/mit-jos-2014/tree/master/Lab2/Exercise01
 
 2. BIOS 进行一些必要的初始化之后, 将 512 byte 的引导扇区(boot sector)加载到物理地址 0x7c00~0x7dff 的内存中, 然后使用 `jmp` 指令将 *CS:IP* 设置为 0000:7c00, 将控制权传递给引导加载程序(boot loader).
 
-​		注: boot loader 的链接地址和加载地址都是 0x7c00, 编译时在 `boot/Makefrag `指定逻辑地址为 0x7c00.
+​		注: boot loader 的链接地址和加载地址都是 0x7c00, 编译时在 `boot/Makefrag ` 指定逻辑地址为 0x7c00.
 ​		boot loader 中, 还没有开启分页, 所以计算出来的线性地址就是真实要访问的内存物理地址.
 
-3. 硬盘上的第一个扇区存储的是 bootloader, 第二个扇区是 kernel image, 扇区大小 512 byptes. boot loader   从第二个扇区开始一直读8个扇区 (512 x 8 = 4K, ELF头的大小), 放到 0x10000(64KB) 的地方, 然后通过对 ELF头的解析, 得到 kernel 模块编译出来之后占的大小，并将 kernel 读到物理内存 0x100000(1MB) 的地方.
+3. (参考 lab1 Part 2: The Boot Loader  以及 Exercise 3). 硬盘上的第一个扇区存储的是 bootloader, bootloader 将处理器从实模式切换到32位保护模式, 使用 Bootstrap GDT 以及 segment translation, 使得虚拟(线性)地址和物理地址相同.
+
+   ```
+     # Switch from real to protected mode, using a bootstrap GDT
+     # and segment translation that makes virtual addresses 
+     # identical to their physical addresses, so that the 
+     # effective memory map does not change during the switch.
+     lgdt    gdtdesc # 把 gdtdesc 这个标识符的值送入全局映射描述符表寄存器 GDTR
+     movl    %cr0, %eax
+     orl     $CR0_PE_ON, %eax
+     movl    %eax, %cr0 # CR0寄存器的bit0置1, bit0 保护模式启动位
+     
+     # Jump to next instruction, but in 32-bit code segment.
+     # Switches processor into 32-bit mode.
+     ljmp    $PROT_MODE_CSEG, $protcseg # 跳转到保护模式下执行
+     
+     # Bootstrap GDT
+   .p2align 2                                # force 4 byte alignment
+   gdt:
+     SEG_NULL				# null seg
+     SEG(STA_X|STA_R, 0x0, 0xffffffff)	# code seg
+     SEG(STA_W, 0x0, 0xffffffff)	        # data seg
+   
+   gdtdesc:
+     .word   0x17                            # sizeof(gdt) - 1
+     .long   gdt                             # address gdt
+   ```
+   
+   `lgdt    gdtdesc`  把 gdtdesc 这个标识符(标识一个内存地址)的值送入全局映射描述符表寄存器 GDTR. GDT 表是处理器工作于保护模式下一个非常重要的表, 用来存放关于某个运行在内存中的程序的分段信息的, 具体参考 lab1 Exercise 中关于实模式和保护模式的介绍.
+   
+   这条指令把关于 GDT 表的一些重要信息存放到 CPU 的 GDTR 寄存器中, 其中包括 GDT 表的内存起始地址, 表的长度. GDTR 寄存器是 48位, 低16位表示该表长度, 高32位表该表在内存中的起始地址.
+   
+   `.word   0x17`  0x17 是这个表的大小 sizeof(gdt) -1 = 0x17 = 23
+    `.long   gdt`  gdt 也是一个标识符, 标识从这里开始就是 GDT 表. 表中包括三个表项, 分别代表 3个段, null seg，code seg，data seg. 由于 xv6 并没有使用分段机制, 也就是说数据和代码都是写在一起的, 所以数据段和代码段的起始地址都是 0x0, 大小都是 0xffffffff.
+   
+   表项由 SEG() 宏定义构造, 3个参数, type: 这个段的访问权限; base: 这个段的起始地址; lim: 这个段的大小界限.
+   
+   ```
+   #define SEG(type,base,lim)					\
+   	.word (((lim) >> 12) & 0xffff), ((base) & 0xffff);	\
+   	.byte (((base) >> 16) & 0xff), (0x90 | (type)),		\
+   		(0xC0 | (((lim) >> 28) & 0xf)), (((base) >> 24) & 0xff)
+   ```
+   
+   段的 base 都是 0, 当程序中给出逻辑地址 segment:offset 时, 无论选择的是哪个段表项, 最后线性地址 = base + offset = offset, 则线性地址和物理地址相同.
+   
+4. 第二个扇区是 kernel image, 扇区大小 512 byptes. boot loader   从第二个扇区开始一直读8个扇区 (512 x 8 = 4K, ELF头的大小), 放到 0x10000(64KB) 的地方, 然后通过对 ELF头的解析, 得到 kernel 模块编译出来之后占的大小，并将 kernel 读到物理内存 0x100000(1MB) 的地方.
 
    最后跳转到 `ELFHDR->e_entry`, 即跳转到 0x10018 内存地址所存储的值处运行, 而该地址存储的内容是 0x10000C, 即 Kernel 的入口地址.
 
@@ -78,57 +124,89 @@ ELF Header:
   ...
 ```
 
-4. (参考 lab1 Part 3: The Kernel)进入 kernel 后, 使用`kern/entrypgdir.c` 中手工编写的静态初始化的页目录和页表来实现 4MB 空间的物理内存映射. 设置 CR0_PG, 内存引用就是虚拟内存硬件将其转换为物理地址的虚拟地址(在这之前, 内存引用被视为物理地址, `boot/boot.S` 建立了一个从线性地址到物理地址的同等映射). `entry_pgdir` 将范围为 0xf0000000 到 0xf0400000 的虚拟地址转换为物理地址 0x00000000 到 0x00400000. 
+5. (参考 lab1 Part 3: The Kernel 以及 Exercise 7) 进入 kernel 后, 链接脚本 /kern/kernel.ld `. = 0xF0100000`使用的都是 0xF0000000 以上的虚拟地址. 需要建立虚拟地址到物理地址的映射, 并开启分页机制.
+   使用 `kern/entrypgdir.c` 中手工编写的静态初始化的页目录和页表来实现 4MB 空间的物理内存映射. 设置 CR0_PG, 内存引用就是虚拟内存硬件将其转换为物理地址的虚拟地址.
 
-```
-.globl entry
-entry:
-	movw	$0x1234,0x472			# warm boot
+   (在这之前的 bootloader 中, `boot/boot.S` 建立了一个从线性地址到物理地址的同等映射, 内存引用被视为物理地址, ). `entry_pgdir` 将虚拟地址 [0, 4MB) 映射到物理地址 [0, 4MB), 虚拟地址 [0xf0000000, 0xf0400000) 映射到 [0, 4MB).
 
-	# We haven't set up virtual memory yet, so we're running from
-	# the physical address the boot loader loaded the kernel at: 1MB
-	# (plus a few bytes).  However, the C code is linked to run at
-	# KERNBASE+1MB.  Hence, we set up a trivial page directory that
-	# translates virtual addresses [KERNBASE, KERNBASE+4MB) to
-	# physical addresses [0, 4MB).  This 4MB region will be
-	# sufficient until we set up our real page table in mem_init
-	# in lab 2.
+   ```
+   pde_t entry_pgdir[NPDENTRIES] = {
+   	// Map VA's [0, 4MB) to PA's [0, 4MB)
+   	[0]
+   		= ((uintptr_t)entry_pgtable - KERNBASE) + PTE_P,
+   	// Map VA's [KERNBASE, KERNBASE+4MB) to PA's [0, 4MB)
+   	[KERNBASE>>PDXSHIFT]
+   		= ((uintptr_t)entry_pgtable - KERNBASE) + PTE_P + PTE_W
+   };
+   
+   pte_t entry_pgtable[NPTENTRIES] = {
+   	0x000000 | PTE_P | PTE_W,
+   	0x001000 | PTE_P | PTE_W,
+   	0x002000 | PTE_P | PTE_W,
+   	0x003000 | PTE_P | PTE_W,
+   	0x004000 | PTE_P | PTE_W,
+   	0x005000 | PTE_P | PTE_W,
+   	...
+   	0x3ff000 | PTE_P | PTE_W,
+   };
+   ```
 
-	# Load the physical address of entry_pgdir into cr3.  entry_pgdir
-	# is defined in entrypgdir.c.
-	movl	$(RELOC(entry_pgdir)), %eax
-	movl	%eax, %cr3
-	# Turn on paging.
-	movl	%cr0, %eax
-	orl	$(CR0_PE|CR0_PG|CR0_WP), %eax
-	movl	%eax, %cr0
+   ```
+   .globl entry
+   entry:
+   	movw	$0x1234,0x472			# warm boot
+   
+   	# We haven't set up virtual memory yet, so we're running from
+   	# the physical address the boot loader loaded the kernel at: 1MB
+   	# (plus a few bytes).  However, the C code is linked to run at
+   	# KERNBASE+1MB.  Hence, we set up a trivial page directory that
+   	# translates virtual addresses [KERNBASE, KERNBASE+4MB) to
+   	# physical addresses [0, 4MB).  This 4MB region will be
+   	# sufficient until we set up our real page table in mem_init
+   	# in lab 2.
+   
+   	# Load the physical address of entry_pgdir into cr3.  entry_pgdir
+   	# is defined in entrypgdir.c.
+   	movl	$(RELOC(entry_pgdir)), %eax
+   	movl	%eax, %cr3	# cr3 寄存器保存页目录表的物理地址
+   	# Turn on paging.
+   	movl	%cr0, %eax
+   	orl	$(CR0_PE|CR0_PG|CR0_WP), %eax
+   	movl	%eax, %cr0	# cr0 最高位PG位设置为1后, 打开分页功能
+   
+   	# Now paging is enabled, but we're still running at a low EIP
+   	# (why is this okay?).  Jump up above KERNBASE before entering
+   	# C code.
+   	mov	$relocated, %eax
+   	jmp	*%eax
+   relocated:
+   	# Clear the frame pointer register (EBP)
+   	# so that once we get into debugging C code,
+   	# stack backtraces will be terminated properly.
+   	movl	$0x0,%ebp			# nuke frame pointer
+   
+   	# Set the stack pointer
+   	movl	$(bootstacktop),%esp
+   
+   	# now to C code
+   	call	i386_init
+   ```
 
-	# Now paging is enabled, but we're still running at a low EIP
-	# (why is this okay?).  Jump up above KERNBASE before entering
-	# C code.
-	mov	$relocated, %eax
-	jmp	*%eax
-relocated:
+   ```
+   # RELOC(x) maps a symbol x from its link address to its actual
+   # location in physical memory (its load address).	 
+   
+   #define	RELOC(x) ((x) - KERNBASE)
+   #define CR0_PG		0x80000000	// Paging
+   ```
 
-	# Clear the frame pointer register (EBP)
-	# so that once we get into debugging C code,
-	# stack backtraces will be terminated properly.
-	movl	$0x0,%ebp			# nuke frame pointer
+   链接脚本 /kern/kernel.ld `. = 0xF0100000`使用的都是 0xF0000000 以上的虚拟地址, entry_pgdir 符号代表的地址也是以 0xF0000000 为基址, entry_pgdir - 0xF0000000  则为物理地址.
 
-	# Set the stack pointer
-	movl	$(bootstacktop),%esp
-
-	# now to C code
-	call	i386_init
-```
-
-​		使能分页后, 高地址的映射已经建立, 此时内核还在低地址运行. 所以接下来是跳转到高地址(KERNBASE	0xF0000000) 上, 然后设置 %ebp, %esp, 最后调用 `i386_init`.
+   `movl %eax, %cr0` 使能分页后, 高地址的映射已经建立, 此时程序还在低地址运行. 所以接下来是跳转到高地址(KERNBASE, 0xF0000000) 上, 然后设置 %ebp, %esp, 最后调用 `i386_init`.
 
 #### 内存布局(包含 ELF 结构)
 
 objdump -h obj/kern/kernel
-
-![lab2_bss_addr](images/lab2_bss_addr.PNG)
 
 ```
 hongssun@hongssun-user:~/workspace/6.828/lab$ objdump -h obj/kern/kernel
