@@ -206,31 +206,9 @@ ELF Header:
 
 #### 内存布局(包含 ELF 结构)
 
-objdump -h obj/kern/kernel
+根据启动过程以及 lab1 中 `objdump -h obj/kern/kernel`的输出, 程序进入 `i386_init`后的内存空间映射如下:
 
-```
-hongssun@hongssun-user:~/workspace/6.828/lab$ objdump -h obj/kern/kernel
 
-obj/kern/kernel:     file format elf32-i386
-
-Sections:
-Idx Name          Size      VMA       LMA       File off  Algn
-  0 .text         00001a57  f0100000  00100000  00001000  2**4
-                  CONTENTS, ALLOC, LOAD, READONLY, CODE
-  1 .rodata       000007c4  f0101a60  00101a60  00002a60  2**5
-                  CONTENTS, ALLOC, LOAD, READONLY, DATA
-  2 .stab         00003fcd  f0102224  00102224  00003224  2**2
-                  CONTENTS, ALLOC, LOAD, READONLY, DATA
-  3 .stabstr      00001bb0  f01061f1  001061f1  000071f1  2**0
-                  CONTENTS, ALLOC, LOAD, READONLY, DATA
-  4 .data         0000a300  f0108000  00108000  00009000  2**12
-                  CONTENTS, ALLOC, LOAD, DATA
-  5 .bss          00000650  f0112300  00112300  00013300  2**5
-                  ALLOC
-  6 .comment      0000002b  00000000  00000000  00013300  2**0
-                  CONTENTS, READONLY
-hongssun@hongssun-user:~/workspace/6.828/lab$ 
-```
 
 #### 页表结构
 
@@ -367,7 +345,38 @@ for the allocator to initialize the free list, but creating a page table with th
 
 boot_alloc() 的实现有2个点要考虑:
 
-1. 如果才能分配内存, 不可能使用 malloc. 源代码中使用了 “end”, 这是定义在链接脚本 kernel.ld 中的符号, 由链接器生成, 指向 bss 段的结束地址, 由 objdump -h obj/kern/kernel 命令的输出结合打印出来的结果, 其值为: 0xf0112950 ( = .bss 虚拟地址 0xf0112300 + size 0x650)
+1. 如果才能分配内存, 不可能使用 malloc. 源代码中使用了 “end”, 这是定义在链接脚本 kernel.ld 中的符号, 由链接器生成, 指向 bss 段的结束地址, 由 objdump -h obj/kern/kernel 命令的输出结合打印出来的结果, 其值为: 0xf0112970 ( = .bss 虚拟地址 0xf0112300 + size 0x670)
+
+   ```
+   hongssun@hongssun-user:~/workspace/6.828/lab$ git log -1
+   commit f85962cd4f91823588fbbe0ac8ec4a4907f3ae43
+   Author: hongssun <bhshs@aliyun.com>
+   Date:   Sun Jul 11 00:41:28 2021 +0800
+   
+       lab2 exercise1 boot_alloc impl
+   hongssun@hongssun-user:~/workspace/6.828/lab$ 
+   hongssun@hongssun-user:~/workspace/6.828/lab$ objdump -h obj/kern/kernel
+   
+   obj/kern/kernel:     file format elf32-i386
+   
+   Sections:
+   Idx Name          Size      VMA       LMA       File off  Algn
+     0 .text         00001ae7  f0100000  00100000  00001000  2**4
+                     CONTENTS, ALLOC, LOAD, READONLY, CODE
+     1 .rodata       00000820  f0101b00  00101b00  00002b00  2**5
+                     CONTENTS, ALLOC, LOAD, READONLY, DATA
+     2 .stab         000040a5  f0102320  00102320  00003320  2**2
+                     CONTENTS, ALLOC, LOAD, READONLY, DATA
+     3 .stabstr      00001bc9  f01063c5  001063c5  000073c5  2**0
+                     CONTENTS, ALLOC, LOAD, READONLY, DATA
+     4 .data         0000a300  f0108000  00108000  00009000  2**12
+                     CONTENTS, ALLOC, LOAD, DATA
+     5 .bss          00000670  f0112300  00112300  00013300  2**5
+                     ALLOC
+     6 .comment      0000002b  00000000  00000000  00013300  2**0
+                     CONTENTS, READONLY
+   ```
+
 2. 如何判断空间不够?
 
 代码实现如下:
@@ -409,9 +418,11 @@ nextfree 是一个 static char *nextfree, 默认初始化为 0. 第一次执行�
 
 nextfree 其始终存放着下一个可以使用的空闲内存空间的虚拟地址. 当再次执行 boot_alloc(), 先  result = nextfree 用于返回, 再计算 nextfree. 如果 n==0, 则不再计算 nextfree. 
 
-如果判断空间不够? 在函数 i386_detect_memory() 中, 通过 *CMOS calls* 得到剩余的物理内存. 其中 basemem 就是 0-640k 之间的内存, extmem 是 1M 以后的内存. npages 是剩余物理内存的页数, 每页大小是 PGSIZE, 因此一共能分配的空间大小为 (npages * PGSIZE). 而虚拟地址的 base 为 KERNBASE (inc/memlayout.h, 因此最大能访问的虚拟地址为 KERNBASE + (npages * PGSIZE).
+如何判断空间不够? 
+
+在函数 i386_detect_memory() 中, 通过 *CMOS calls* 得到剩余的物理内存. 其中 basemem 就是 0-640k 之间的内存, extmem 是 1M 以后的内存. npages 是剩余物理内存的页数, 每页大小是 PGSIZE, 因此一共能分配的空间大小为 (npages * PGSIZE). 而虚拟地址的 base 为 KERNBASE (inc/memlayout.h, 因此最大能访问的虚拟地址为 KERNBASE + (npages * PGSIZE).
 
 JOS 把整个物理内存空间划分成三个部分：
-0x00000~0xA0000(640K), 这部分叫 basemem, 是可用的.
+0x00000~0xA0000(640K), 这部分叫 Base memory, 是可用的.
 0xA0000~0x100000, 这部分叫做 IO hole, 是不可用的. 主要被用来分配给外部设备了. 
-0x100000~, 1M 以后的空间, 这部分叫做 extmem, 是可用的, 这是最重要的内存区域.
+0x100000~ ???, 1M 以后的空间, 这部分叫做 Extended memory, 是可用的, 这是最重要的内存区域.
