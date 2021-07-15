@@ -202,13 +202,13 @@ ELF Header:
 
    链接脚本 /kern/kernel.ld `. = 0xF0100000`使用的都是 0xF0000000 以上的虚拟地址, entry_pgdir 符号代表的地址也是以 0xF0000000 为基址, entry_pgdir - 0xF0000000  则为物理地址.
 
-   `movl %eax, %cr0` 使能分页后, 高地址的映射已经建立, 此时程序还在低地址运行. 所以接下来是跳转到高地址(KERNBASE, 0xF0000000) 上, 然后设置 %ebp, %esp, 最后调用 `i386_init`.
+   `movl %eax, %cr0` 使能分页后, 高地址的映射已经建立, 此时程序还在低地址运行. 所以接下来是跳转到高地址(KERNBASE: 0xF0000000) 上, 然后设置 %ebp, %esp, 最后调用 `i386_init`.
 
 #### 内存布局(包含 ELF 结构)
 
 根据启动过程以及 lab1 中 `objdump -h obj/kern/kernel`的输出, 程序进入 `i386_init`后的内存空间映射如下:
 
-
+![Virtual_Physical_Mapping](images/Virtual_Physical_Mapping.png)
 
 #### 页表结构
 
@@ -422,7 +422,7 @@ nextfree 其始终存放着下一个可以使用的空闲内存空间的虚拟�
 
 在函数 i386_detect_memory() 中, 通过 *CMOS calls* 得到剩余的物理内存. 其中 basemem 就是 0-640k 之间的内存, extmem 是 1M 以后的内存. npages 是剩余物理内存的页数, 每页大小是 PGSIZE, 因此一共能分配的空间大小为 (npages * PGSIZE). 而虚拟地址的 base 为 KERNBASE (inc/memlayout.h, 因此最大能访问的虚拟地址为 KERNBASE + (npages * PGSIZE).
 
-JOS 把整个物理内存空间划分成三个部分：
+JOS 把整个物理内存空间划分成三个部分(参考 inc/memlayout.h 注释 )：
 0x00000~0xA0000(640K), 这部分叫 Base memory, 是可用的.
 0xA0000~0x100000, 这部分叫做 IO hole, 是不可用的. 主要被用来分配给外部设备了. 
 0x100000~ ???, 1M 以后的空间, 这部分叫做 Extended memory, 是可用的, 这是最重要的内存区域.
