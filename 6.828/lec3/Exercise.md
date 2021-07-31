@@ -31,7 +31,7 @@ https://github.com/clpsz/mit-jos-2014/tree/master/Lab2/Exercise01
 ​		注: boot loader 的链接地址和加载地址都是 0x7c00, 编译时在 `boot/Makefrag ` 指定逻辑地址为 0x7c00.
 ​		boot loader 中, 还没有开启分页, 所以计算出来的线性地址就是真实要访问的内存物理地址.
 
-3. (参考 lab1 Part 2: The Boot Loader  以及 Exercise 3). 硬盘上的第一个扇区存储的是 bootloader, bootloader 将处理器从实模式切换到32位保护模式, 使用 Bootstrap GDT 以及 segment translation, 使得虚拟(线性)地址和物理地址相同.
+3. (参考 lab1 Part 2: The Boot Loader  以及 Exercise 3). 硬盘上的第一个扇区存储的是 bootloader, bootloader 将处理器从实模式切换到32位保护模式, 使用 Bootstrap GDT 以及 segment translation, 使得虚线性地址和物理地址相同.
 
    ```
      # Switch from real to protected mode, using a bootstrap GDT

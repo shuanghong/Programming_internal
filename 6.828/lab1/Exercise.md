@@ -69,7 +69,7 @@ Boot loader 位于这512字节中, 由一个汇编语言源文件 `boot/boot.S` 
 
 那么逻辑地址(logical address)又是什么呢? 根据上面一段文字, 编写程序时看到的是虚拟地址, 但是并不是是直接把这个虚拟地址写到指令中的, 它是由逻辑地址推导得到的, 所以指令中真实出现的是逻辑地址. 一个逻辑地址是由两部分组成的: 一个段选择子(segment selector), 一个段内偏移量(offset), 通常被写作 segment:offset. 而且采用哪个段选择子通常也是在指令中隐含的, 程序员通常只需要指明段内偏移量, 然后分段管理机构(segmentation hardware) 将会把这个逻辑地址转换为线性地址(linear address). 如果该机器没有采用分页机制(paging hardware)的话, 此时 linear address 就是最后的主存物理地址; 如果机器中还有分页设备的话, 比如内存大小实际只有1G, 但是根据前面我们知道可访问的空间有4G, 此时还需要分页机构(paging hardware) 把这个线性地址转换为最终的真实物理地址. 
 
-即地址转换过程: segment:offset --> 逻辑地址---> 分段管理 ---> 虚拟地址/线性地址 ---> 分页机制 ---> 物理地址, 参考下图(来自 XV6 Appendix B). 
+即地址转换过程: 逻辑地址(segment:offset)  ---> 分段管理 ---> 线性地址 ---> 分页机制 ---> 物理地址, 参考下图(来自 XV6 Appendix B). 
 
 ![](images/Logical_linear_physical_address.JPG)
 

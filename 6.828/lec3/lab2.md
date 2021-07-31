@@ -82,18 +82,20 @@ check_page_free_list(), check_page_alloc() 测试物理页分配器.
 
 线性地址是在段转换之后、分页转换之前得到的地址.
 
-一个物理地址是在分段和分页转换之后最终得到的地址, 并且最终在硬件总线上传到 RAM.
+一个物理地址是在分段和分页转换之后最终得到的地址, 并且最终在硬件总线上传给 RAM.
 
-参考下图(来自 XV6 Appendix B)
+![Logical_linear_physical_address_1](images/Logical_linear_physical_address_1.JPG)
+
+下图来自 XV6 Appendix B)
 
 ![](images/Logical_linear_physical_address.JPG)
 
 Virtual(Selector: Offset) --> 分段转换 ---> 线性地址 ---> 分页转换 ---> 物理地址
 
-C 指针是虚拟地址的“偏移量”组件. 在 `boot/boot.S` 我们安装了一个全局描述符表(GDT), 通过将所有的段基址设置为 0 和限制为 0xffffffff 来有效地禁用段转换. 因此 "selector" 没有影响, 线性地址总是等于虚拟地址的 Offset.
+一个 C 指针是虚拟地址的“Offset”组件. 在 `boot/boot.S` 我们安装了一个全局描述符表(GDT), 通过将所有的 segment base addresses 设置为 0, limits 为 0xffffffff 来有效地禁用段转换. 因此 "selector" 没有影响, 线性地址总是等于虚拟地址的 Offset.
 在 lab3 中我们必须与分段进行更多的交互以设置特权级别, 但是对于内存转换, 我们可以在 JOS lab 中忽略分段, 只关注分页转换.
 
-回想一下在 lab1 中的 Part 3, 我们安装了一个简单的页表, 这样内核就可以在它的链接地址 0xf0100000 上运行, 即使它实际上装载在 ROM BIOS 之上的物理内存中, 即0x00100000. 这个页表只映射了4MB的内存. 在本实验中你将为 JOS 设置虚拟地址空间布局, 将对其进行扩展, 以映射从虚拟地址 0xf0000000开始的前 256MB物理内存, 并映射虚拟地址空间的许多其他区域.
+回想一下在 lab1 中的 Part 3, 我们安装了一个简单的页表, 这样内核就可以在它的链接地址 0xf0100000 上运行, 即使它实际上装载在 ROM BIOS 之上的物理内存中, 即 0x00100000. 这个页表只映射了 4MB的内存. 在本实验中你将为 JOS 设置虚拟地址空间布局, 将对其进行扩展, 以映射从虚拟地址 0xf0000000开始的前 256MB物理内存, 并映射虚拟地址空间的许多其他区域.
 
 ### Exercise 3
 
