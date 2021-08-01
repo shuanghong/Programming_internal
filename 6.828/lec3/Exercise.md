@@ -31,7 +31,7 @@ https://github.com/clpsz/mit-jos-2014/tree/master/Lab2/Exercise01
 ​		注: boot loader 的链接地址和加载地址都是 0x7c00, 编译时在 `boot/Makefrag ` 指定逻辑地址为 0x7c00.
 ​		boot loader 中, 还没有开启分页, 所以计算出来的线性地址就是真实要访问的内存物理地址.
 
-3. (参考 lab1 Part 2: The Boot Loader  以及 Exercise 3). 硬盘上的第一个扇区存储的是 bootloader, bootloader 将处理器从实模式切换到32位保护模式, 使用 Bootstrap GDT 以及 segment translation, 使得虚线性地址和物理地址相同.
+3. (参考 lab1 Part 2: The Boot Loader  以及 lab1 Exercise 3). 硬盘上的第一个扇区存储的是 bootloader, bootloader 将处理器从实模式切换到32位保护模式, 使用 Bootstrap GDT 以及 segment translation, 使得虚线性地址和物理地址相同.
 
    ```
      # Switch from real to protected mode, using a bootstrap GDT
@@ -76,6 +76,8 @@ https://github.com/clpsz/mit-jos-2014/tree/master/Lab2/Exercise01
    ```
    
    段的 base 都是 0, 当程序中给出逻辑地址 segment:offset 时, 无论选择的是哪个段表项, 最后线性地址 = base + offset = offset, 则线性地址和物理地址相同.
+   
+   也就是 lab2 中所说的, "一个 C 指针是虚拟地址的 “Offset” 组件. 在 `boot/boot.S` 我们安装了一个全局描述符表(GDT), 通过将所有的 segment base addresses 设置为 0, limits 为 0xffffffff 来有效地禁用段转换. 因此 "selector" 没有影响, 线性地址总是等于虚拟地址的 Offset".
    
 4. 第二个扇区是 kernel image, 扇区大小 512 byptes. boot loader   从第二个扇区开始一直读8个扇区 (512 x 8 = 4K, ELF头的大小), 放到 0x10000(64KB) 的地方, 然后通过对 ELF头的解析, 得到 kernel 模块编译出来之后占的大小，并将 kernel 读到物理内存 0x100000(1MB) 的地方.
 
@@ -204,19 +206,57 @@ ELF Header:
 
    `movl %eax, %cr0` 使能分页后, 高地址的映射已经建立, 此时程序还在低地址运行. 所以接下来是跳转到高地址(KERNBASE: 0xF0000000) 上, 然后设置 %ebp, %esp, 最后调用 `i386_init`.
 
-#### 内存布局(包含 ELF 结构)
+#### 地址空间布局
 
 根据启动过程以及 lab1 中 `objdump -h obj/kern/kernel`的输出, 程序进入 `i386_init`后的内存空间映射如下:
 
 ![Virtual_Physical_Mapping](images/Virtual_Physical_Mapping.png)
 
-#### 页表结构
+#### 内存管理
 
-XV6 Chapter 2  Page tables
+##### 80386 存储器组织和段
 
-x86 page table hardware 
+参考 INTEL 80386 PROGRAMMER'S REFERENCE MANUAL 1986, 2.1 Memory Organization and Segmentation
 
-Physical memory allocation 
+物理内存在 80386系统下被组织成一个 8位的字节序列, 每个字节含有一个唯一的地址, 从 0 到 2^32-1(4GB).
+
+然而, 80386的程序与物理地址空间是相互独立的, 这意味着写程序时可以不用关心有多少物理存储器, 也不用管指令和数据在物理存储器中是如何存放的.
+
+对应用程序可见的存储器组织模型是由系统软件设计者来决定的. 80386的体系结构给予了设计者为每个任务选择一种模式的自由, 存储器组织模型可以是下面几种:
+
+* “平坦”地址空间, 由最多 4G字节组成的单个数组
+* 段地址空间, 可以由 16383个线性地址空间组成, 每个 4G
+
+两种模式均可以提供存储器保护, 不同的任务可以使用不同的存储器组织模型, 设计者使用存储器组织模型的准则和系统程序员使用什么方式来实现在第II部分－系统编程中讨论.
+
+* “平坦” 模式
+
+  “平坦”模式下, 应用程序可以使用 2^32(4G) 字节的数组. 尽管存储器可以是 4G字节, 但通常它们要小的多, 处理器通过第 5章介绍的地址变换将 4G空间映射到物理存储器, 应用程序不需要知道这些细节.
+
+  指向平坦地址空间的指针是一个 32位序列数, 从 0到 2^32 -1. 单独编译模块的重定位由系统软件来做(例如: 链接器, 定位器, 绑定器, 加载器).
+
+* 段模式
+
+  在段模式下, 应用程序可以使用更大的地址空间(称为逻辑地址空间), 多达 2^46(64T) 字节的数组. 处理器通过第5章介绍的地址转换机制将 64T的地址空间映射到物理存储器(多达 4G), 应用程序不需要知道地址映射的细节. 
+
+  应用程序可以把逻辑地址空间看作是 16383个一维空间的集合, 每个都有指定的长度. 每个线性子空间被称作段, 段是连续地址空间的一个单位, 段大小可以从一个字节到最多 2^32 字节, 这个地址空间的一个完整指针由两部分组成 (见图 2-1):
+
+  ![i386_Figure 2-1_Two-Component-Pointer](images/i386_Figure 2-1_Two-Component-Pointer.JPG)
+
+  * 16位段选择符,标识一个段
+  * 32位偏移, 段内偏移地址
+
+  在程序执行期间, 处理器将段的起始物理地址与段选择器相关联. 单独编译的模块可以在运行时通过改变它们段的基址来重新定位. 段的大小是可变的, 因此段可以和它里面的模块大小相同.
+
+##### 分段地址转换 (Segment Translation)
+
+TODO:
+
+​	XV6 Chapter 2  Page tables
+
+​	x86 page table hardware 
+
+​	Physical memory allocation 
 
 ## 实验准备
 
