@@ -210,7 +210,7 @@ ELF Header:
 
 根据启动过程以及 lab1 中 `objdump -h obj/kern/kernel`的输出, 程序进入 `i386_init`后的内存空间映射如下:
 
-![Virtual_Physical_Mapping](images/Virtual_Physical_Mapping.png)
+<img src="images/Virtual_Physical_Mapping.png" alt="Virtual_Physical_Mapping" style="zoom: 80%;" />
 
 #### 内存管理
 
@@ -241,7 +241,7 @@ ELF Header:
 
   应用程序可以把逻辑地址空间看作是 16383个一维空间的集合, 每个都有指定的长度. 每个线性子空间被称作段, 段是连续地址空间的一个单位, 段大小可以从一个字节到最多 2^32 字节, 这个地址空间的一个完整指针由两部分组成 (见图 2-1):
 
-  ![i386_Figure 2-1_Two-Component-Pointer](images/i386_Figure 2-1_Two-Component-Pointer.JPG)
+  <img src="images/i386_Figure 2-1_Two-Component-Pointer.JPG" alt="i386_Figure 2-1_Two-Component-Pointer" style="zoom:67%;" />
 
   * 16位段选择符,标识一个段
   * 32位偏移, 段内偏移地址
@@ -249,6 +249,62 @@ ELF Header:
   在程序执行期间, 处理器将段的起始物理地址与段选择器相关联. 单独编译的模块可以在运行时通过改变它们段的基址来重新定位. 段的大小是可变的, 因此段可以和它里面的模块大小相同.
 
 ##### 分段地址转换 (Segment Translation)
+
+参考 INTEL 80386 PROGRAMMER'S REFERENCE MANUAL 1986, Chapter 5 Memory Management 
+
+在 lab1 execise 中讲解保护模式时, 以及 lab2 中 Virtual, Linear, and Physical Addresses 的学习中, 都介绍了虚拟地址到物理地址的转换机制, 如下图:
+
+![Logical_linear_physical_address](images/Logical_linear_physical_address.JPG)
+
+80386 转换逻辑地址(虚拟地址, 也就是程序员看到的地址) 到物理地址(也就是实际的物理内存地址)分以下两步：
+
+1. 分段地址转换, 这一步中把逻辑地址 (由段选择子和段偏移组成)转换为线性地址
+2. 分页地址转换, 这一步中把线性地址转换为物理地址. 这一步是可选的, 由系统软件设计者决定是否需要.
+
+这些转换对于应用程序员来说是不可见的, 图 5-1以高度抽象的形式显示了这两步转换. 图5-1和这一章的以下部分以一种简单的方式介绍了 80386的地址转换机制. 事实上, 地址转换机制也包括了内存保护的特性. 为了简单起见, 保护机制放在第六章来讲述. 
+
+<img src="images/i386_Figure 5-1_Address-Translation-Overview.JPG" alt="i386_Figure 5-1_Address-Translation-Overview" style="zoom: 67%;" />
+
+图 5-2 详细显示了处理器如何把逻辑地址转换为线性地址. 为了这样的转换, 处理器用到了以下的数据结构:
+
+1. 描述符 (Descriptors)
+2. 描述符表 (Descriptor tables)
+3. 选择子 (Selectors)
+4. 段寄存器 (Segment Registers)
+
+<img src="images/i386_Figure 5-2_Segment Translation.JPG" alt="i386_Figure 5-2_Segment Translation" style="zoom:67%;" />
+
+###### 描述符 (Descriptors)
+
+段描述符是处理器用来把逻辑地址映射为线性地址的必要数据结构. 描述符是由编译器、链接器、加载器、或者是操作系统生成的, 不能由应用程序员生成. 图5-3显示了两种常用的描述符的格式, 所有的段描述符都是这两种格式当中的一种, 段描述符的字段如下:
+
+<img src="images/i386_Figure 5-3_General-Segment-Descriptor-Format.JPG" alt="i386_Figure 5-3_General-Segment-Descriptor-Format" style="zoom:67%;" />
+
+基址(BASE): 决定了一个段在 4G线性地址空间中的位置, 处理器将基址的3个片段连接起来, 形成一个单独的32位值.
+
+界限(LIMIT): 决定了一个段的大小, 处理器用2部分的界限字段来形成一个20位的界限值. 处理器以两种方式来解析界限的值, 解析方式取决于粒度位(granularity)的设置情况:
+
+1. 以1个 byte 为单位, 定义了一个最大为1M字节的段
+2. 以 4KB 为单位, 则段大小可以高达 4G. 界限值在使用之前处理器将会把它先左移12位, 低12位则自动插入0.
+
+粒度位 (Granularity bit): 决定了界限值被处理器解析的方式. 当它被复位时, 界限值被解析为以 1Byte为一个单位.当它置位时, 则界限值以 4KB为一个单位.
+
+类型 (TYPE): 用于区别不同类型的描述符.
+
+描述符特权级 (Descriptor Privilege Level, DPL): 用来实现保护机制(参看第六章).
+
+段存在位 (Segment-Present bit): 如果这一位为 0, 则此描述符为非法的, 不能被用来实现地址转换. 如果一个非法描述符被加载进一个段寄存器, 处理器会立即产生异常. 
+
+图5-4显示了当存在位为 0时, 描述符的格式. 操作系统可以任意的使用被标识为可用(AVAILABLE)的位. 一个实现基于段的虚拟内存的操作系统可以在以下情况下来清除存在位:
+
+1. 当这个段的线性地址空间并没有完全被分页系统映射到物理地址空间时.
+2. 当段根本没有在内存里时.
+
+已访问位(Accessed bit): 当处理器访问该段时, 将自动设置访问位. 也就是说, 当一个指向该段描述符的选择子被加载进一个段寄存器时或者当被一条选择子测试指令使用时, 在段级基础上实现虚拟内存的操作系统可能会周期性的测试和清除该位, 从而监视一个段的使用情况.
+
+创建和维拟描述符是系统软件的任务, 一般说来可能是由编译器、程序加载器、系统生成器、或者操作系统来协作完成.
+
+
 
 TODO:
 
