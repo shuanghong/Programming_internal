@@ -212,7 +212,7 @@ ELF Header:
 
 <img src="images/Virtual_Physical_Mapping.png" alt="Virtual_Physical_Mapping" style="zoom: 80%;" />
 
-#### 内存管理
+#### 80386 内存管理
 
 ##### 80386 存储器组织和段
 
@@ -373,7 +373,7 @@ b. 隐式的加载指令, 例如 far CALL, JMP. 这些指令隐式的访问 CS �
 
 ###### 页表 (Page Tables)
 
-一个页表仅仅是很多 32-bit 页指示器(32-bit page specifiers) 组成的数组. 页表本身也是一个页, 所以包含了4K字节内存空量或者最多 1K 32-bit 的表项.
+一个页表仅仅是很多 32-bit 页指示器(32-bit page specifiers) 组成的数组. 页表本身也是一个页, 所以包含了4K Bytes 内存空量或者最多 1K 32-bit 的表项.
 
 在寻址一个内存页时, 使用了两级的页表. 高一级的页表也被叫作页目录, 页目录可最多寻址 1K个二级页表, 一个二级页表最多可寻址 1K个页面. 所以一个页目录最多可寻址 2^10 * 2^10 个页面. 因为每个页面有 4K(2^12) 字节大小, 所以一个页目录可寻址整个 80386的实物理地址空间 (2^20 * 2^12 = 2^32).
 
@@ -466,63 +466,65 @@ TODO:
 
 ## 实验准备
 
-1. 新建 lab2 分支, 合并 lab1 的修改
+### 新建 lab2 分支, 合并 lab1 的修改
 
-   ```
-   git checkout -b lab2 remotes/origin/lab2
-   git merge lab1
-   ```
+```
+git checkout -b lab2 remotes/origin/lab2
+git merge lab1
+```
 
-2. lab2 新加文件
+### lab2 新加文件
 
-   - `inc/memlayout.h` : 描述了虚拟地址空间的结构
-   - `kern/pmap.c` : 物理内存管理的函数实现, 需要修改、添加代码以完成实验
-   - `kern/pmap.h` : 定义了 `PageInfo` 结构, 用来管理物理内存页面
-   - `kern/kclock.c` : 操作电池供电的时钟以及 CMOS RAM硬件
-   - `kern/kclock.h`
+- `inc/memlayout.h` : 描述了虚拟地址空间的结构
+- `kern/pmap.c` : 物理内存管理的函数实现, 需要修改、添加代码以完成实验
+- `kern/pmap.h` : 定义了 `PageInfo` 结构, 用来管理物理内存页面
+- `kern/kclock.c` : 操作电池供电的时钟以及 CMOS RAM硬件
+- `kern/kclock.h`
 
-   要特别注意 `memlayout.h` 和`pmap.h`, 因为这个 lab 要求使用并理解其中包含的许多定义. `inc/mmu.h` 也包含了一些对这个 lab 有用的定义.
+要特别注意 `memlayout.h` 和`pmap.h`, 因为这个 lab 要求使用并理解其中包含的许多定义. `inc/mmu.h` 也包含了一些对这个 lab 有用的定义.
 
-3. 编译并运行 lab2, 代码最后执行 `i386_init`, 停在 `kern/pmap.c:128: mem_init: This function is not finished`
+### 编译并运行 lab2
 
-   ```
-   hongssun@hongssun-user:~/workspace/6.828/lab$ make qemu
-   ```
+代码最后执行 `i386_init`, 停在 `kern/pmap.c:128: mem_init: This function is not finished`
 
-   ![lab2_run](images/lab2_run.PNG)
+```
+hongssun@hongssun-user:~/workspace/6.828/lab$ make qemu
+```
 
-   `mem_init` 就是 lab2 内存管理的初始化函数.
+![lab2_run](images/lab2_run.PNG)
 
-   ```
-   void i386_init(void)
-   {
-   	extern char edata[], end[];
-   
-   	// Before doing anything else, complete the ELF loading process.
-   	// Clear the uninitialized global data (BSS) section of our program.
-   	// This ensures that all static/global variables start out zero.
-   	memset(edata, 0, end - edata);
-   
-   	// Initialize the console.
-   	// Can't call cprintf until after we do this!
-   	cons_init();
-   
-   	cprintf("6828 decimal is %o octal!\n", 6828);
-   
-       //cprintf("edata end addr: 0x%x, bss end addr: 0x%x\n", edata, end);
-   
-   	// Lab 2 memory management initialization functions
-   	mem_init();
-   
-   	// Drop into the kernel monitor.
-   	while (1)
-   		monitor(NULL);
-   }
-   ```
+`mem_init` 就是 lab2 内存管理的初始化函数.
+
+```
+void i386_init(void)
+{
+	extern char edata[], end[];
+
+	// Before doing anything else, complete the ELF loading process.
+	// Clear the uninitialized global data (BSS) section of our program.
+	// This ensures that all static/global variables start out zero.
+	memset(edata, 0, end - edata);
+
+	// Initialize the console.
+	// Can't call cprintf until after we do this!
+	cons_init();
+
+	cprintf("6828 decimal is %o octal!\n", 6828);
+
+    //cprintf("edata end addr: 0x%x, bss end addr: 0x%x\n", edata, end);
+
+	// Lab 2 memory management initialization functions
+	mem_init();
+
+	// Drop into the kernel monitor.
+	while (1)
+		monitor(NULL);
+}
+```
 
 ## Exercise 1
 
-exercise 1 要求写一个 physical page allocator.
+要求写一个 physical page allocator.
 
 ### boot_alloc()
 
@@ -567,9 +569,9 @@ boot_alloc(uint32_t n)
 
 根据注释, boot_alloc()  是一个简单的物理内存分配器, 仅仅用于 JOS 设置其虚拟内存系统时, 真正的分配器是 page_alloc(). n > 0, 分配连续 n 个 bytes 的内存, 不做初始化, 返回一个内核虚拟地址, 如果超出内存, 则 panic.
 
-boot_alloc() 仅在初始化时 page_free_list 还没建立之前使用.
+boot_alloc() 仅在初始化时, page_free_list 还没建立之前使用.
 
-根据代码, boot_alloc() 在 mem_init() 中被调用, 其返回值用来初始化  kern_pgdir, 目的是创建初始化的页目录. 那么为什么需要一个单独的 page allocator, 仅在初始化时使用呢?
+根据代码, boot_alloc() 在 mem_init() 中被调用, 其返回值用来初始化  kern_pgdir, 目的是创建初始化的页目录(page directory). 那么为什么需要一个单独的 page allocator, 仅在初始化时使用呢?
 
 原因是 kernel 启动时要将物理地址映射到虚拟地址, 而我们需要一个 page table 来记录这种映射关系. 但是创建一个 page table 涉及到为 page table 所在的 page 分配空间, 而为一个 page 分配空间需要在将物理地址映射到虚拟地址以后.
 解决办法是, 使用一个单独的 page allocator, 在一个固定的位置 allocate memory. 然后在这部分去做初始化的工作.
@@ -586,12 +588,12 @@ Allocation consists of removing a page from the linked list; freeing consists of
 	There is a bootstrap problem: all of physical memory must be mapped in order
 for the allocator to initialize the free list, but creating a page table with those mappings involves allocating page-table pages. xv6 solves this problem by using a separate page allocator during entry, which allocates memory just after the end of the kernel’s data segment. This allocator does not support freeing and is limited by the 4 MB mapping in the entrypgdir, but that is sufficient to allocate the first kernel page table.
 	xv6 使用从内核结尾到 PHYSTOP 之间的物理内存为运行时分配提供内存资源. 每次分配,它会将整块4096字节大小的页分配出去. xv6还会通过维护一个物理页组成的链表来寻找空闲页,所以分配内存需要将页移出该链表,而释放内存需要将页加入该链表.
-这里我们遇到了一个自举的问题:为了让分配器能够初始化该空闲链表, 所有的物理内存都必须要建立起映射,但是建立包含这些映射的页表又必须要分配存放页表的页. xv6 通过在 entry中使用一个特别的页分配器来解决这个问题,该分配器会在内核数据部分的后面分配内存.该分配器不支持释放内存, 并受限于 entrypgdir中规定的 4MB分配大小, 即便如此,该分配器还是足够为内核的第一个页表分配出内存.
+这里我们遇到了一个自举的问题:为了让分配器能够初始化该空闲链表, 所有的物理内存都必须要建立起映射, 但是建立包含这些映射的页表又必须要分配存放页表的页. xv6 通过在 entry中使用一个特别的页分配器来解决这个问题,该分配器会在内核数据部分的后面分配内存.该分配器不支持释放内存, 并受限于 entrypgdir中规定的 4MB分配大小, 即便如此,该分配器还是足够为内核的第一个页表分配出内存.
 ```
 
 boot_alloc() 的实现有2个点要考虑:
 
-1. 如果才能分配内存, 不可能使用 malloc. 源代码中使用了 “end”, 这是定义在链接脚本 kernel.ld 中的符号, 由链接器生成, 指向 bss 段的结束地址, 由 objdump -h obj/kern/kernel 命令的输出结合打印出来的结果, 其值为: 0xf0112970 ( = .bss 虚拟地址 0xf0112300 + size 0x670)
+1. 如何才能分配内存, 不可能使用 malloc. 源代码中使用了 “end”, 这是定义在链接脚本 kernel.ld 中的符号, 由链接器生成, 指向 bss 段的结束地址, 由 objdump -h obj/kern/kernel 命令的输出结合打印出来的结果, 其值为: 0xf0112970 ( .bss 虚拟地址 0xf0112300 + size 0x670)
 
    ```
    hongssun@hongssun-user:~/workspace/6.828/lab$ git log -1
@@ -660,7 +662,7 @@ nextfree: 0xf0114000
 kernel panic at kern/pmap.c:145: mem_init: This function is not finished
 ```
 
-nextfree 是一个 static char *nextfree, 默认初始化为 0. 第一次执行时进入 if (!nextfree), 获取 end 地址之后的以 PGSIZE 对齐的地址空间 (0xf0113000). 用 result 保存 nextfree 并用于返回, nextfree 则继续取下一个 n 之后的地址空间.
+nextfree 是一个 static char *nextfree, 默认初始化为 0. 第一次执行时进入 if (!nextfree), 获取 bss end 地址之后的以 PGSIZE 对齐的地址空间 (0xf0113000). 用 result 保存 nextfree 并用于返回, nextfree 则继续取下一个 n 之后的地址空间.
 
 nextfree 其始终存放着下一个可以使用的空闲内存空间的虚拟地址. 当再次执行 boot_alloc(), 先  result = nextfree 用于返回, 再计算 nextfree. 如果 n==0, 则不再计算 nextfree. 
 
@@ -672,3 +674,166 @@ JOS 把整个物理内存空间划分成三个部分(参考 inc/memlayout.h 注�
 0x00000~0xA0000(640K), 这部分叫 Base memory, 是可用的.
 0xA0000~0x100000, 这部分叫做 IO hole, 是不可用的. 主要被用来分配给外部设备了. 
 0x100000~ ???, 1M 以后的空间, 这部分叫做 Extended memory, 是可用的, 这是最重要的内存区域.
+
+### mem_init()
+
+```
+// Set up a two-level page table:
+//    kern_pgdir is its linear (virtual) address of the root
+//
+// This function only sets up the kernel part of the address space
+// (ie. addresses >= UTOP).  The user part of the address space
+// will be setup later.
+//
+// From UTOP to ULIM, the user is allowed to read but not write.
+// Above ULIM the user cannot read or write.
+void mem_init(void)
+{
+	uint32_t cr0;
+	size_t n;
+
+	// Find out how much memory the machine has (npages & npages_basemem).
+	i386_detect_memory();
+
+	// Remove this line when you're ready to test this function.
+	panic("mem_init: This function is not finished\n");
+
+	//////////////////////////////////////////////////////////////////////
+	// create initial page directory.
+	kern_pgdir = (pde_t *) boot_alloc(PGSIZE);
+	memset(kern_pgdir, 0, PGSIZE);
+
+	//////////////////////////////////////////////////////////////////////
+	// Recursively insert PD in itself as a page table, to form
+	// a virtual page table at virtual address UVPT.
+	// (For now, you don't have understand the greater purpose of the
+	// following line.)
+
+	// Permissions: kernel R, user R
+	kern_pgdir[PDX(UVPT)] = PADDR(kern_pgdir) | PTE_U | PTE_P;
+
+	//////////////////////////////////////////////////////////////////////
+	// Allocate an array of npages 'struct PageInfo's and store it in 'pages'.
+	// The kernel uses this array to keep track of physical pages: for
+	// each physical page, there is a corresponding struct PageInfo in this
+	// array.  'npages' is the number of physical pages in memory.  Use memset
+	// to initialize all fields of each struct PageInfo to 0.
+	// Your code goes here:
+
+
+	//////////////////////////////////////////////////////////////////////
+	// Now that we've allocated the initial kernel data structures, we set
+	// up the list of free physical pages. Once we've done so, all further
+	// memory management will go through the page_* functions. In
+	// particular, we can now map memory using boot_map_region
+	// or page_insert
+	page_init();
+
+	check_page_free_list(1);
+	check_page_alloc();
+	check_page();
+
+	//////////////////////////////////////////////////////////////////////
+	// Now we set up virtual memory
+
+	//////////////////////////////////////////////////////////////////////
+	// Map 'pages' read-only by the user at linear address UPAGES
+	// Permissions:
+	//    - the new image at UPAGES -- kernel R, user R
+	//      (ie. perm = PTE_U | PTE_P)
+	//    - pages itself -- kernel RW, user NONE
+	// Your code goes here:
+
+	//////////////////////////////////////////////////////////////////////
+	// Use the physical memory that 'bootstack' refers to as the kernel
+	// stack.  The kernel stack grows down from virtual address KSTACKTOP.
+	// We consider the entire range from [KSTACKTOP-PTSIZE, KSTACKTOP)
+	// to be the kernel stack, but break this into two pieces:
+	//     * [KSTACKTOP-KSTKSIZE, KSTACKTOP) -- backed by physical memory
+	//     * [KSTACKTOP-PTSIZE, KSTACKTOP-KSTKSIZE) -- not backed; so if
+	//       the kernel overflows its stack, it will fault rather than
+	//       overwrite memory.  Known as a "guard page".
+	//     Permissions: kernel RW, user NONE
+	// Your code goes here:
+
+	//////////////////////////////////////////////////////////////////////
+	// Map all of physical memory at KERNBASE.
+	// Ie.  the VA range [KERNBASE, 2^32) should map to
+	//      the PA range [0, 2^32 - KERNBASE)
+	// We might not have 2^32 - KERNBASE bytes of physical memory, but
+	// we just set up the mapping anyway.
+	// Permissions: kernel RW, user NONE
+	// Your code goes here:
+
+	// Check that the initial page directory has been set up correctly.
+	check_kern_pgdir();
+
+	// Switch from the minimal entry page directory to the full kern_pgdir
+	// page table we just created.	Our instruction pointer should be
+	// somewhere between KERNBASE and KERNBASE+4MB right now, which is
+	// mapped the same way by both page tables.
+	//
+	// If the machine reboots at this point, you've probably set up your
+	// kern_pgdir wrong.
+	lcr3(PADDR(kern_pgdir));
+
+	check_page_free_list(0);
+
+	// entry.S set the really important flags in cr0 (including enabling
+	// paging).  Here we configure the rest of the flags that we care about.
+	cr0 = rcr0();
+	cr0 |= CR0_PE|CR0_PG|CR0_AM|CR0_WP|CR0_NE|CR0_MP;
+	cr0 &= ~(CR0_TS|CR0_EM);
+	lcr0(cr0);
+
+	// Some more checks, only possible after kern_pgdir is installed.
+	check_page_installed_pgdir();
+}
+```
+
+根据注释, mem_init() 配置两级页表, kern_pgdir 是第一级页目录.
+
+mem_init() 首先调用  i386_detect_memory(), 其中 basemem 就是 0-640k 之间的内存, extmem 是 1M 以后的内存. npages 是剩余物理内存的页数, 每页大小是 PGSIZE, 因此一共能分配的空间大小为 (npages * PGSIZE). 根据前面 boot_alloc() 的执行结果:
+
+```
+Physical memory: 131072K available, base = 640K, extended = 130432K
+totalmem = 131072K
+basemem = 640K
+extended = 130432K
+PGSIZE = 4096
+npages = 131072 / (PGSIZE / 1024) = 32768
+npages_basemem = 640 / (PGSIZE / 1024) = 160
+```
+
+接着调用 `kern_pgdir = (pde_t *) boot_alloc(PGSIZE);` 
+
+kern_pgdir 是一个 pde_t * 的指针, 指向操作系统的页目录表, 操作系统之后工作在虚拟内存模式下时, 就需要这个页目录表进行地址转换. 根据前面 boot_alloc() 的执行结果, 这个地址紧跟在 Kernal bss 段之后 (0xf0113000).
+
+```
+nextfree: 0xf0113000, bss end addr: 0xf0112970
+```
+
+分配一个页 (PGSIZE, 4096 Bytes) 大小的内存空间作为第一级的页目录表. 一个页表项是 4 Bytes, 所以一共有 1024 个页表, 参考图 5-9.
+
+接着执行   `kern_pgdir[PDX(UVPT)] = PADDR(kern_pgdir) | PTE_U | PTE_P;`
+结合 `memlayout.h` 中的地址空间映射, 
+
+```
+UVPT = 0xef400000
+#define PDXSHIFT	22		// offset of PDX in a linear address
+
+// page directory index
+#define PDX(la)		((((uintptr_t) (la)) >> PDXSHIFT) & 0x3FF)
+```
+
+参考图 5-8所示的线性地址格式, 以及图 5-9 分页地址转换, PDX(UVPT) 即取 UVPT 的 DIR 部分(bit31~bit22), 使用 DIR 字段来索引页目录表.
+
+PADDR(kern_pgdir) 是取 kern_pgdir 对应的物理地址, PTE_U 设置页表项的 User/Supervisor 位, PTE_P 设置 Present 位.
+
+所以这条语句的意义在于为虚拟地址 UVPT(0xef400000) 建立映射, 映射到页目录地址 kern_pgdir 对应的物理地址.
+
+由于在启动过程中, 已经将虚拟地址 [0xf0000000, 0xf0400000) 的 4MB的地址空间映射到物理地址 [0, 4MB).
+
+
+
+​	
