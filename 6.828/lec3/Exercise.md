@@ -456,7 +456,7 @@ b. 隐式的加载指令, 例如 far CALL, JMP. 这些指令隐式的访问 CS �
 
 <img src="images/i386_Figure 5-13_Descriptor-Per-Page-Table.JPG" alt="i386_Figure 5-13_Descriptor-Per-Page-Table" style="zoom:67%;" />
 
-TODO:
+### JOS 的分段和分页:
 
 ​	XV6 Chapter 2  Page tables
 
@@ -813,27 +813,63 @@ kern_pgdir 是一个 pde_t * 的指针, 指向操作系统的页目录表, 操�
 nextfree: 0xf0113000, bss end addr: 0xf0112970
 ```
 
-分配一个页 (PGSIZE, 4096 Bytes) 大小的内存空间作为第一级的页目录表. 一个页表项是 4 Bytes, 所以一共有 1024 个页表, 参考图 5-9.
+分配一个页 (PGSIZE: 4096 Bytes) 大小的内存空间作为第一级的页目录表. 一个页表项是 4 Bytes, 所以一共有 1024 个页表, 参考图 5-9.
 
 接着执行   `kern_pgdir[PDX(UVPT)] = PADDR(kern_pgdir) | PTE_U | PTE_P;`
-结合 `memlayout.h` 中的地址空间映射, 
 
 ```
-UVPT = 0xef400000
-#define PDXSHIFT	22		// offset of PDX in a linear address
+为了弄清这句的意义, 增加一些打印:
+6828 decimal is 15254 octal!
+edata end addr: 0xf0113300, bss end addr: 0xf0113970
+Physical memory: 131072K available, base = 640K, extended = 130432K
+nextfree: 0xf0114000, bss end addr: 0xf0113970
+nextfree: 0xf0115000
+mem_init() kern_pgdir: 0xf0114000, kern_pgdir addr: 0xf0113968
+mem_init() kern_pgdir[0]: 0, kern_pgdir[1]: 0, ...kern_pgdir[PGSIZE-1]: 0
+mem_init() UVPT: 0xef400000, PDX(UVPT): 0x3bd, kern_pgdir[PDX(UVPT)] physical addr: 0x00114000
+kernel panic at kern/pmap.c:159: mem_init: This function is not finished
 
+Kernel 的地址空间相比于之前也有点变化, .text, .rodata, .stab 三个段 size 变大, kern_pgdir 的起始地址比之前大了 0x1000.
+hongssun@hongssun-user:~/workspace/6.828/lab$ objdump -h obj/kern/kernel
+obj/kern/kernel:     file format elf32-i386
+Sections:
+Idx Name          Size      VMA       LMA       File off  Algn
+  0 .text         00001bc7  f0100000  00100000  00001000  2**4
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+  1 .rodata       00000920  f0101be0  00101be0  00002be0  2**5
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  2 .stab         00004171  f0102500  00102500  00003500  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  3 .stabstr      00001bc9  f0106671  00106671  00007671  2**0
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  4 .data         0000a300  f0109000  00109000  0000a000  2**12
+                  CONTENTS, ALLOC, LOAD, DATA
+  5 .bss          00000670  f0113300  00113300  00014300  2**5
+                  ALLOC
+  6 .comment      0000002b  00000000  00000000  00014300  2**0
+                  CONTENTS, READONLY
+
+可以看到, kern_pgdir 指向操作系统的页目录表 0xf0114000, UVPT=0xef400000, PDX(UVPT): 0x3bd
+kern_pgdir[0x3bd] = PADDR(kern_pgdir)|PTE_U|PTE_P = 0x00114000|0x004|0x001
+
+结合 memlayout.h 中的地址空间映射及相关定义:
+#define PDXSHIFT	22		// offset of PDX in a linear address
 // page directory index
 #define PDX(la)		((((uintptr_t) (la)) >> PDXSHIFT) & 0x3FF)
+
+参考图 5-8所示的线性地址格式, 以及图 5-9分页地址转换.
+PDX(UVPT) 即取 UVPT 的 DIR部分(bit31~bit22), 使用 DIR字段来索引页目录表.
+PADDR(kern_pgdir) 是取 kern_pgdir 对应的物理地址, PTE_U 设置页表项的 User/Supervisor 位, PTE_P 设置 Present 位.
 ```
 
-参考图 5-8所示的线性地址格式, 以及图 5-9 分页地址转换, PDX(UVPT) 即取 UVPT 的 DIR 部分(bit31~bit22), 使用 DIR 字段来索引页目录表.
+这条语句的意义在页目录表添加第一个页目录表项, 为虚拟地址 UVPT(0xef400000) 建立映射, 映射到页目录地址 kern_pgdir 对应的物理地址. 从 0xef400000 这个虚拟地址开始, 存放的就是操作系统的页表.
 
-PADDR(kern_pgdir) 是取 kern_pgdir 对应的物理地址, PTE_U 设置页表项的 User/Supervisor 位, PTE_P 设置 Present 位.
+根据图 5-9分页地址转换, 由页目录找到页表.
 
-所以这条语句的意义在于为虚拟地址 UVPT(0xef400000) 建立映射, 映射到页目录地址 kern_pgdir 对应的物理地址.
+```
+如果访问地址 0xef400000上的数据, 其线性地址格式为: 0x3bd << 22 | 0 | 0,
+分页机制, 高 10bit为0x3bd, kern_pgdir[0x3bd] = 0x00114000|0x004|0x001
+中间 10bit为 0, 
+```
 
-由于在启动过程中, 已经将虚拟地址 [0xf0000000, 0xf0400000) 的 4MB的地址空间映射到物理地址 [0, 4MB).
-
-
-
-​	
+由于在启动过程中, 已经将虚拟地址 [0xf0000000, 0xf0400000) 的 4MB的地址空间映射到物理地址 [0, 4MB).	
