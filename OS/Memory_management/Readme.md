@@ -10,7 +10,7 @@
 [OS2014 - OscourseWiki (tsinghua.edu.cn)](http://os.cs.tsinghua.edu.cn/oscourse/OS2014#Course_Introduction) 
 [OS2018spring - OscourseWiki (tsinghua.edu.cn)](http://os.cs.tsinghua.edu.cn/oscourse/OS2018spring) 
 [OS2020spring - OscourseWiki (tsinghua.edu.cn)](http://os.cs.tsinghua.edu.cn/oscourse/OS2020spring) [Releases · dramforever/os-lectures-build · GitHub](https://github.com/dramforever/os-lectures-build/releases) 
-PS. 2014 年的课程章节和视频比较匹配, 2020 年课件更好
+PS. 2014 年的课程章节与视频比较匹配, 2018 课件内容与视频更匹配, 2020 年课件最新, 包含一些 RISC-V 的知识.
 
 学习笔记: 
 [3.OperatingSystem_in_depth/Charpter 3.md at main · OXygenPanda/3.OperatingSystem_in_depth · GitHub](https://github.com/OXygenPanda/3.OperatingSystem_in_depth/blob/main/Charpter 3.md) 
@@ -180,7 +180,7 @@ PS. 2014 年的课程章节和视频比较匹配, 2020 年课件更好
 
 ![](images/Segmentation_Address.JPG)
 
-**分段地址空间**
+#### 分段地址空间
 
 进程运行时, 按照程序自身的逻辑关系划分为若干个段, 通过对每个段不同的管理, 如访问权限等, 能够实现更好的分离与共享.
 
@@ -188,7 +188,7 @@ PS. 2014 年的课程章节和视频比较匹配, 2020 年课件更好
 
 ![](images/Segmentation_Address_Mapping.JPG)
 
-**分段寻址方案**
+#### 分段寻址方案
 
 1. 段访问机制: 程序逻辑地址的访问需要一个二元组 (s 段号, addr 段内偏移), 二元组可以用段寄存器+地址寄存器实现(如 X86), 也可以用单寄存器地址实现.
 
@@ -199,3 +199,65 @@ PS. 2014 年的课程章节和视频比较匹配, 2020 年课件更好
    ![](images/Segmentation_Address_Access_HW.JPG)
 
    这里由操作系统将段表信息(段号, 物理内存起始地址, 长度) 写入寄存器, 用于程序运行时的地址映射.
+
+### 分页 (Paging)
+
+分段寻址中, 地址由段号+段内偏移组成, 类似地, 分页寻址中地址访问由页(帧)号+页内偏移组成.
+
+不同的是, 分段中段的 size 是不同的, 可变的. 分页中, 页的 size 是固定的, 为 2^n, 比如 4096B, 8192B.
+
+#### 分页地址空间
+
+* 划分物理地址空间至固定大小的页帧, Page Frame
+
+  大小是 2 的幂次方, 比如: 512B, 4096B, 8192B
+
+* 划分逻辑地址空间至相同大小的页, Page
+
+  大小和物理页帧一样, 比如: 512B, 4096B, 8192B
+
+* 建立方案, 逻辑地址空间(逻辑页)与物理地址空间(物理页)之间的映射, pages to frames
+
+  * 页表
+  * MMU/TLB
+
+#### 页帧 (Frame)
+
+物理内存被划分成大小相等的帧. 一个物理地址表示为一个二元组(f, o)
+
+* f : 页帧号, F 位, 共有 2^F 个页帧.
+* o : 帧内偏移, S 位, 每帧有 2^S bytes.
+
+Physical address = 2^S * f + o, 如下图所示.
+
+<img src="images/Page_Address_Access.JPG" alt="Page_Address_Access" style="zoom: 67%;" />
+
+举例, 16-bit 的地址空间, 9-bit (512 byte) 大小的页帧. 物理地址表示 = (3, 6)
+
+物理地址 = 2^S * f + o = 2^9 * 3 + 6 = 1542 (F = 7, S = 9, f = 3, o= 6)
+
+<img src="images/Page_Address_Access_1.JPG" alt="Page_Address_Access_1" style="zoom: 67%;" />
+
+#### 页 (Page)
+
+进程逻辑地址空间被划分为大小相等的页, 一个逻辑地址表示为一个二元组(p, o)
+
+* p : 页号(P 位, 一共 2^P 个页). 页号大小一般 != 帧号大小
+* o : 页内偏移(S 位, 每页有 2^S bytes).  页内偏移 == 帧内偏移
+
+Virtual address = 2^S * p + o, 如下图所示.
+
+<img src="images/Page_Address_Access_2.JPG" alt="Page_Address_Access_2" style="zoom: 67%;" />
+
+#### 页寻址机制
+
+* 逻辑页到物理页帧的映射
+* 逻辑地址中的页号是连续的
+* 物理地址中的帧号是不连续的
+* 不是所有的逻辑页都有对应的物理页帧, 一般逻辑地址空间会大于物理地址空间
+
+<img src="images/Page_Address_Access_3.JPG" alt="Page_Address_Access_3" style="zoom:67%;" />
+
+页表由操作系统建立, 可以简单理解为一个数组, 页号是 index, 页帧号是 value.
+
+CPU 寻址时根据页表基地址和页号获取该页号对应的页帧, 加上偏移地址, 获得要访问的物理地址.
