@@ -4,19 +4,20 @@
 
 操作系统原理(清华)
 
-视频: [清华 操作系统原理_哔哩哔哩 (゜-゜)つロ 干杯~-bilibili](https://www.bilibili.com/video/BV1uW411f72n?p=13)
+视频: [清华 操作系统原理_哔哩哔哩_bilibili](https://www.bilibili.com/video/BV1uW411f72n?p=19)
 
 课件: 
 [OS2014 - OscourseWiki (tsinghua.edu.cn)](http://os.cs.tsinghua.edu.cn/oscourse/OS2014#Course_Introduction) 
 [OS2018spring - OscourseWiki (tsinghua.edu.cn)](http://os.cs.tsinghua.edu.cn/oscourse/OS2018spring) 
 [OS2020spring - OscourseWiki (tsinghua.edu.cn)](http://os.cs.tsinghua.edu.cn/oscourse/OS2020spring) [Releases · dramforever/os-lectures-build · GitHub](https://github.com/dramforever/os-lectures-build/releases) 
-PS. 2014 年的课程章节与视频比较匹配, 2018 课件内容与视频更匹配, 2020 年课件最新, 包含一些 RISC-V 的知识.
+PS. 2014 年的课程章节与视频比较匹配, 2018 课件内容与视频更匹配, 2020 年课件最新, 包含一些 RISC-V 的内容.
 
 学习笔记: 
-[3.OperatingSystem_in_depth/Charpter 3.md at main · OXygenPanda/3.OperatingSystem_in_depth · GitHub](https://github.com/OXygenPanda/3.OperatingSystem_in_depth/blob/main/Charpter 3.md) 
-[PrivateNotes/计算机科学/计算机操作系统 at master · kirklin/PrivateNotes · GitHub](https://github.com/kirklin/PrivateNotes/tree/master/计算机科学/计算机操作系统)
+[GitHub - OXygenPanda/3.OperatingSystem_in_depth: 视频学习 - 深入理解操作系统](https://github.com/OXygenPanda/3.OperatingSystem_in_depth)
 
-[【操作系统】 Operation System 第三章：连续式内存分配_iwanderu的博客-CSDN博客](https://blog.csdn.net/iwanderu/article/details/103934647)
+[GitHub - kirklin/PrivateNotes: 个人学习笔记，包含了计算机科学笔记，前端笔记，后端笔记](https://github.com/kirklin/PrivateNotes)
+
+[物理内存管理：非连续内存分配 - Kirk Lin的个人学习笔记](https://kirklin.github.io/PrivateNotes/计算机科学/计算机操作系统/物理内存管理：非连续内存分配/)
 
 [【操作系统】 Operation System 第四章：非连续式内存分配_iwanderu的博客-CSDN博客](https://blog.csdn.net/iwanderu/article/details/103946219)
 
@@ -261,3 +262,47 @@ Virtual address = 2^S * p + o, 如下图所示.
 页表由操作系统建立, 可以简单理解为一个数组, 页号是 index, 页帧号是 value.
 
 CPU 寻址时根据页表基地址和页号获取该页号对应的页帧, 加上偏移地址, 获得要访问的物理地址.
+
+#### 页表
+
+##### 概述
+
+分页机制是基于页表实现的. 操作系统为每一个运行的程序(进程)建立一张页表, 进程的每个页面在内存中存放的位置都是知道的.
+
+* 一个进程对应一张页表, 页表随进程运行状态的改变而动态变化
+* 进程的每个页面对应一个页表项, 页表项的长度是相同的, 由标志位和页帧号组成
+  * 标志位用来表示当前页的属性: 存在位(resident bit)、修改位(dirty bit)、引用位(clock/reference bit)
+* 页表记录进程页面和实际存放的物理内存之间的映射关系
+* 页表基址寄存器 (PTBR: Page Table Base Register)
+
+<img src="images/Page_Table.JPG" alt="Page_Table" style="zoom: 50%;" />
+
+##### 地址转换
+
+16bit 地址的计算机系统,逻辑地址空间是 2^16, 64 kB. 物理内存大小 2^15, 32 kB. 每页大小 2^10, 1024 Byte.
+如下图所示. 其中逻辑地址 16bit 表示, 0~9bit 表示页内偏移 o, 10~15bit 表示页号 p; 物理地址 15bit 表示, 0~9bit 表示页内偏移 o, 9~14bit 表示页帧号 f.
+
+<img src="images/Page_Table_1.JPG" alt="Page_Table_1" style="zoom:50%;" />
+
+* 逻辑地址 (4,0): 页号 4对应第五个页表项(从下往上数): 10000000, 其中标志位是: 100, resident bit 是 0, 说明逻辑地址(4,0) 在实际物理地址中是不存在的. 如果 CPU访问这个逻辑地址会抛出一个内存访问缺页异常.
+* 逻辑地址 (3,1023): 页号 3对应的标志位是 011, dirty bit: 0、resident bit: 1、clock/reference: 1. 可知逻辑地址 (3,1023) 在物理地址中存在. 其对应的页帧号是 4, 再加上偏移量 1023, 所以逻辑地址(3,1023) 对应的物理地址是 (4,1023).
+
+#### 分页机制的性能问题
+
+##### 时间开销
+
+访问一个内存单元需要 2 次内存访问.
+
+* 第一次访问: 访问页表项, 获取逻辑地址对应的物理地址.
+* 第二次访问: 访问物理内存上的数据.
+
+##### 空间开销:
+
+页表本身可能会非常大. 比如 64位机器, 如果每页 1024 Byte, 那么页表项有 2^64/2^10 = 2^54 个. 并且一个进程对应一个页表, n 个进程就是 n 个页表.
+
+这么大的页表不可能放到 CPU 中, 如果存储在内存中那么也会导致 2次内存访问的效率很低.
+
+那么如何解决这两个问题呢:
+
+1. 缓存 (Caching)
+2. 间接 (Indirection) 访问
