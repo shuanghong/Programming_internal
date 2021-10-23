@@ -670,7 +670,7 @@ nextfree 其始终存放着下一个可以使用的空闲内存空间的虚拟�
 
 在函数 i386_detect_memory() 中, 通过 *CMOS calls* 得到剩余的物理内存. 其中 basemem 就是 0-640k 之间的内存, extmem 是 1M 以后的内存. npages 是剩余物理内存的页数, 每页大小是 PGSIZE, 因此一共能分配的空间大小为 (npages * PGSIZE). 而虚拟地址的 base 为 KERNBASE (inc/memlayout.h, 因此最大能访问的虚拟地址为 KERNBASE + (npages * PGSIZE).
 
-JOS 把整个物理内存空间划分成三个部分(参考 inc/memlayout.h 注释 )：
+JOS 把整个物理内存空间划分成三个部分, 参考 inc/memlayout.h 注释以及前文地址空间布局图:
 0x00000~0xA0000(640K), 这部分叫 Base memory, 是可用的.
 0xA0000~0x100000, 这部分叫做 IO hole, 是不可用的. 主要被用来分配给外部设备了. 
 0x100000~ ???, 1M 以后的空间, 这部分叫做 Extended memory, 是可用的, 这是最重要的内存区域.
@@ -829,7 +829,7 @@ mem_init() kern_pgdir[0]: 0, kern_pgdir[1]: 0, ...kern_pgdir[PGSIZE-1]: 0
 mem_init() UVPT: 0xef400000, PDX(UVPT): 0x3bd, kern_pgdir[PDX(UVPT)] physical addr: 0x00114000
 kernel panic at kern/pmap.c:159: mem_init: This function is not finished
 
-Kernel 的地址空间相比于之前也有点变化, .text, .rodata, .stab 三个段 size 变大, kern_pgdir 的起始地址比之前大了 0x1000.
+Kernel 的地址空间相比于之前也有点变化, .text, .rodata, .stab 三个段 size 变大, kern_pgdir 的起始地址比之前大了 0x1000 (0xf0114000).
 hongssun@hongssun-user:~/workspace/6.828/lab$ objdump -h obj/kern/kernel
 obj/kern/kernel:     file format elf32-i386
 Sections:
@@ -862,7 +862,9 @@ PDX(UVPT) 即取 UVPT 的 DIR部分(bit31~bit22), 使用 DIR字段来索引页�
 PADDR(kern_pgdir) 是取 kern_pgdir 对应的物理地址, PTE_U 设置页表项的 User/Supervisor 位, PTE_P 设置 Present 位.
 ```
 
-这条语句的意义在页目录表添加第一个页目录表项, 为虚拟地址 UVPT(0xef400000) 建立映射, 映射到页目录地址 kern_pgdir 对应的物理地址. 根据图 5-9分页地址转换机制, 由页目录找到页表, 所以从 0xef400000 这个虚拟地址开始, 存放的就是操作系统的页表.
+这条语句的意义是:
+
+在页目录表添加第一个页目录表项, 为虚拟地址 UVPT(0xef400000) 建立映射, 映射到页目录地址 kern_pgdir 对应的物理地址 0x00114000. 根据图 5-9分页地址转换机制, 由页目录找到页表, 所以从 0xef400000 这个虚拟地址开始, 存放的就是操作系统的页表.
 
 <img src="images/i386_Figure 5-9_Page-Translation.JPG" alt="i386_Figure 5-9_Page-Translation" style="zoom:50%;" />
 
@@ -872,5 +874,104 @@ PADDR(kern_pgdir) 是取 kern_pgdir 对应的物理地址, PTE_U 设置页表项
 中间 10bit为 0, 即访问页表的第 0 项, 也是物理地址 0x00114000|0x004|0x001
 ```
 
-由于在启动过程中, 已经将虚拟地址 [0xf0000000, 0xf0400000) 的 4MB的地址空间映射到物理地址 [0, 4MB).	
+由于在启动过程中, 已经将虚拟地址 [0xf0000000, 0xf0400000) 的 4MB的地址空间映射到物理地址 [0, 0x0400000). 当访问 UVPT 这个虚拟地址时,  相当于访问物理地址 0x00114000.
 
+接下来是初始化结构数组: `struct PageInfo *pages;`	
+`PageInfo` 结构体是一个物理内存的页面, 也就是说 `pages` 每一个元素都映射到一个物理页面, 操作系统内核通过这个数组来追踪所有物理页的使用情况. 
+
+下面的代码是为 `pages`分配空间并初始化. 由于是在 page_init() 之前, 不能使用 page_alloc(),因此这部分 allocate 也是由 boot_alloc() 完成.
+
+```
+n = npages * sizeof(struct PageInfo);
+pages = (struct PageInfo *)boot_alloc(n);
+memset(pages, 0, n);
+```
+
+这段执行后, 所有的物理内存都按照页面大小划分成了页面, 存放在了 pages 中.
+
+### page_init()
+
+page_init() 是初始化物理页的的数据结构以及空闲物理空间页的链表 memory free list. 代码实现已给出, 但是其将所有的物理页都标记为 free, 存在一些问题, 参考前文的地址空间图和函数  i386_detect_memory() 的输出.
+
+1. 物理页面 0 应该是 used, 这部分保存着实模式的 IDT 和 BIOS 的数据结构, 这些数据之后可能还会用到
+2. lab1 中为了兼容 8086 留下的 I/O hole 空间, 这部分内存不能够被使用, 也就不能标记为 free.
+3. 从 0x00100000 开始的 extended memory, 有一部分被 kernel 占用, 不能标记为 free.
+
+这里的重点是如果知道  extended memory 哪部分区域被 kernel 占用, 可以通过调用 `boot_alloc(0)` 得知分配的页目录的最后区域, 这个区域之后就全是空闲了.
+
+最终完成的`page_init()`如下
+
+```
+void
+page_init(void)
+{
+	size_t i = 1;
+	// for (i = 0; i < npages; i++) {
+	// 	pages[i].pp_ref = 0;
+	// 	pages[i].pp_link = page_free_list;
+	// 	page_free_list = &pages[i];
+	// }
+	
+	// 跳过page[0], 分配 npages_basemem 数量的物理页
+	for (i = 1; i < npages_basemem; i++){
+		pages[i].pp_ref = 0;
+		pages[i].pp_link = page_free_list;
+		page_free_list = &pages[i];
+	}
+	// extended_memory 中 kernel使用之后的位置开始分配
+	physaddr_t next_page = PADDR(boot_alloc(0));
+	size_t idx_free = next_page / PGSIZE;
+	for(i = idx_free; i < npages; i++){
+		pages[i].pp_ref = 0;
+		pages[i].pp_link =page_free_list;
+		page_free_list = &pages[i];
+	}
+}
+```
+
+这段执行后, `page_free_list`即为物理内存空闲也链表.
+
+### page_alloc()
+
+请求页面, 即从 `page_free_list`中分配一个空闲的物理页.
+
+```
+struct PageInfo * page_alloc(int alloc_flags)
+{
+	struct PageInfo * alloc_page = page_free_list;
+	if(!page_free_list)
+	{
+		return NULL;
+	}
+	// move page_free_list
+	page_free_list = page_free_list -> pp_link;
+	// init free page
+	alloc_page -> pp_link = NULL;
+	if(alloc_flags & ALLOC_ZERO)
+	{
+    // page2kva 是将 PageInfo 结构体转换成对应的 pages[]虚拟地址,因为 pages都是通过 boot_alloc 分配在kernel区，
+		memset(page2kva(alloc_page), 0, PGSIZE);
+	}
+	return alloc_page;
+}
+```
+
+### page_free()
+
+释放一块空闲页.
+
+```
+void page_free(struct PageInfo *pp)
+{
+	// Hint: You may want to panic if pp->pp_ref is nonzero or
+	// pp->pp_link is not NULL.
+	if(pp -> pp_ref){
+		panic("[page_free] page : %p is still being used", pp);
+	}
+	else if(pp -> pp_link){
+		panic("[page_free] page : %p is already freed", pp);
+	}
+	pp -> pp_link = page_free_list;
+	page_free_list = pp;
+}
+```
