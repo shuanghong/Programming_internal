@@ -18,6 +18,12 @@ https://blog.csdn.net/cinmyheart/article/details/39827321
 
 https://github.com/clpsz/mit-jos-2014/tree/master/Lab2/Exercise01
 
+https://zhuanlan.zhihu.com/p/35890535
+
+https://ocw.mit.edu/courses/electrical-engineering-and-computer-science/6-828-operating-system-engineering-fall-2012/lecture-notes-and-readings/
+
+
+
 ## 背景知识
 
 #### 启动过程及内存映射
@@ -975,3 +981,47 @@ void page_free(struct PageInfo *pp)
 	page_free_list = pp;
 }
 ```
+
+## Exercise 2 虚拟内存: 分页
+
+看看 Intel 80386 参考手册 (https://pdos.csail.mit.edu/6.828/2017/readings/i386/toc.htm) 的第5章和第6章.仔细阅读关于分页转换和基于页面的保护的章节(5.2和6.4). 我们建议你也浏览一下关于分段(segmentation) 的部分; 虽然 JOS 使用分页硬件来实现虚拟内存和保护, 但在 x86上不能禁用分段转换和基于段的保护, 因此你需要对它有基本的了解.
+
+### X86 分页地址转换
+
+这部分参考 Intel 80386 手册 5.2 Page Translation. 在前文背景知识/80386 内存管理中已经介绍.
+
+### X86 页保护机制
+
+参考 Intel 80386 手册 "Chapter 6 Protection"
+
+#### 为什么 (Why Protection)
+
+​    80386 保护功能的目的是帮助检测和识别bug. 80386 支持复杂的应用程序, 可能包含数百或数千个程序模块. 在这类应用程序中, 问题是如何尽快发现和消除bug, 以及如何严格限制它们的危害. 为了帮助在生产中更快地调试应用程序并使它们更健壮, 80386 包含了验证内存访问和指令执行是否符合保护标准的机制. 根据系统设计目标, 可以使用或忽略这些机制.
+
+#### 保护机制概述
+
+​	80386 的保护有五个方面:
+
+1. 类型检查 (Type checking)
+2. 限制检查 (Limit checking)
+3. 可寻址域的限制 (Restriction of addressable domain)
+4. 程序入口点限制 (Restriction of procedure entry points)
+5. 指令集限制 (Restriction of instruction set)
+
+80386 的保护硬件是内存管理硬件的一个组成部分. 保护既适用于段地址转换, 也适用于页地址转换.
+
+每一个对内存的引用都由硬件检查, 以验证它是否满足保护标准. 所有这些检查都是在内存周期开始之前进行的; 任何违规都会阻止循环的启动并导致异常. 由于这些检查是与地址形成同时执行, 因此不存在性能损失.
+
+访问内存的无效尝试会导致异常, 有关异常机制的解释请参阅第9章. 本章界定了导致异常的保护违反行为.
+
+“特权”的概念是保护的几个方面的核心 (前面列表中的数字3、4和5). 应用于过程时, 特权是指在多大程度上可以信任过程不会犯可能影响其他过程或数据的错误. 应用于数据时, 特权是数据结构对不太受信任的过程应该具有的保护程度.
+
+特权的概念既适用于段保护也适用于页保护.
+
+#### 页级保护 (Page-Level Protection)
+
+与页相关的保护有两种:
+
+1. 可寻址域的限制 (Restriction of addressable domain)
+2. 类型检查 (Type checking)
+
