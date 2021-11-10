@@ -26,7 +26,7 @@ https://ocw.mit.edu/courses/electrical-engineering-and-computer-science/6-828-op
 
 ## 背景知识
 
-#### 启动过程及内存映射
+#### 启动过程
 
 由 lab1 可知, 整个系统的启动过程如下:
 
@@ -81,7 +81,7 @@ https://ocw.mit.edu/courses/electrical-engineering-and-computer-science/6-828-op
    		(0xC0 | (((lim) >> 28) & 0xf)), (((base) >> 24) & 0xff)
    ```
    
-   段的 base 都是 0, 当程序中给出逻辑地址 segment:offset 时, 无论选择的是哪个段表项, 最后线性地址 = base + offset = offset, 则线性地址和物理地址相同.
+   段的 base 都是 0, 当程序中给出逻辑地址 segment:offset 时, 无论选择的是哪个段表项, 最后线性地址 = base + offset = offset, 则线性地址和逻辑(虚拟)地址相同.
    
    也就是 lab2 中所说的, "一个 C 指针是虚拟地址的 “Offset” 组件. 在 `boot/boot.S` 我们安装了一个全局描述符表(GDT), 通过将所有的 segment base addresses 设置为 0, limits 为 0xffffffff 来有效地禁用段转换. 因此 "selector" 没有影响, 线性地址总是等于虚拟地址的 Offset".
    
@@ -461,10 +461,6 @@ b. 隐式的加载指令, 例如 far CALL, JMP. 这些指令隐式的访问 CS �
 这样的话, 一个任务可以寻址 1K个段 (对于很多应用程序来说都足够了), 每个段可以高达 4M字节. 描述符和与之对应的页目录项, 还有与之对应的页表, 就可以同时分配同时回收.
 
 <img src="images/i386_Figure 5-13_Descriptor-Per-Page-Table.JPG" alt="i386_Figure 5-13_Descriptor-Per-Page-Table" style="zoom:67%;" />
-
-### JOS 的分段和分页:
-
-​	XV6 Chapter 2  Page tables
 
 ​	x86 page table hardware 
 
@@ -982,9 +978,9 @@ void page_free(struct PageInfo *pp)
 }
 ```
 
-## Exercise 2 虚拟内存: 分页
+## Exercise 2 虚拟内存
 
-看看 Intel 80386 参考手册 (https://pdos.csail.mit.edu/6.828/2017/readings/i386/toc.htm) 的第5章和第6章.仔细阅读关于分页转换和基于页面的保护的章节(5.2和6.4). 我们建议你也浏览一下关于分段(segmentation) 的部分; 虽然 JOS 使用分页硬件来实现虚拟内存和保护, 但在 x86上不能禁用分段转换和基于段的保护, 因此你需要对它有基本的了解.
+阅读 Intel 80386 参考手册 (https://pdos.csail.mit.edu/6.828/2017/readings/i386/toc.htm) 的第5章和第6章.仔细阅读关于分页转换和基于页面的保护的章节(5.2和6.4). 我们建议你也浏览一下关于分段(segmentation) 的部分; 虽然 JOS 使用分页硬件来实现虚拟内存和保护, 但在 x86上不能禁用分段转换和基于段的保护, 因此你需要对它有基本的了解.
 
 ### X86 分页地址转换
 
@@ -1003,18 +999,18 @@ void page_free(struct PageInfo *pp)
 ​	80386 的保护有五个方面:
 
 1. 类型检查 (Type checking)
-2. 限制检查 (Limit checking)
-3. 可寻址域的限制 (Restriction of addressable domain)
-4. 程序入口点限制 (Restriction of procedure entry points)
-5. 指令集限制 (Restriction of instruction set)
+2. 界限检查 (Limit checking)
+3. 可寻址空间约束 (Restriction of addressable domain)
+4. 子程序入口点约束 (Restriction of procedure entry points)
+5. 指令集约束 (Restriction of instruction set)
 
-80386 的保护硬件是内存管理硬件的一个组成部分. 保护既适用于段地址转换, 也适用于页地址转换.
+80386 的保护硬件是内存管理硬件的一个组成部分. 保护既适用于分段地址转换, 也适用于分页地址转换.
 
 每一个对内存的引用都由硬件检查, 以验证它是否满足保护标准. 所有这些检查都是在内存周期开始之前进行的; 任何违规都会阻止循环的启动并导致异常. 由于这些检查是与地址形成同时执行, 因此不存在性能损失.
 
-访问内存的无效尝试会导致异常, 有关异常机制的解释请参阅第9章. 本章界定了导致异常的保护违反行为.
+访问内存的无效尝试会导致异常, 有关异常机制的解释请参阅第9章. 本章只介绍引发异常的非法操作.
 
-“特权”的概念是保护的几个方面的核心 (前面列表中的数字3、4和5). 应用于过程时, 特权是指在多大程度上可以信任过程不会犯可能影响其他过程或数据的错误. 应用于数据时, 特权是数据结构对不太受信任的过程应该具有的保护程度.
+“特权级”的概念是保护的几个方面的核心 (前面列表中的数字3、4和5). 对于子程序, 特权级是指一个子程序被信赖的程度, 这种信赖程度可以使别的子程序或数据免受损害. 对于数据, 特权级是指对数据结构的保护程度, 这种程度可以让该数据结构免受不信任代码的访问.
 
 特权的概念既适用于段保护也适用于页保护.
 
@@ -1022,6 +1018,50 @@ void page_free(struct PageInfo *pp)
 
 与页相关的保护有两种:
 
-1. 可寻址域的限制 (Restriction of addressable domain)
+1. 可寻址范围约束 (Restriction of addressable domain)
 2. 类型检查 (Type checking)
 
+##### 页表项保存保护参数 (Page-Table Entries Hold Protection Parameters)
+
+<img src="images/i386_Figure 6-10_Protection-Fields-Page-Table-Entrie.JPG" alt="i386_Figure 6-10_Protection-Fields-Page-Table-Entrie" style="zoom:67%;" />
+
+图6-10 高亮显示了控制访问的页表项(PTE)和页目录项(PDE)的字段
+
+###### 可寻址范围约束 (Restricting Addressable Domain)
+
+页面的特权级概念是通过以下两级来实现的
+
+1. 超级用户级 (Supervisor level (U/S=0)) — 用于关连操作系统和其它一些系统软件和数据.
+2. 用户级（U/S=1）— 用于应用程序子程序和数据.
+
+当前级(U或者S)和 CPL相关. 如果 CPL是0, 1或 2, 处理器在特权级执行. 如果 CPL是 3, 处理器在用户级执行.
+
+当处理器在超级用户(特权级)模式执行, 所有页面可寻址. 但是当处理器在用户模执行时, 只有用户的页面可寻址.
+
+###### 类型检查 (Type Checking)
+
+在分页寻址时, 以下两种类型被定义:
+
+1. 只读访问 (R/W=0) (Read-Only Access)
+2. 可读写访问 (R/W=1) (Read/Write Access)
+
+当处理器在特权模式下执行时, 所有页面都是可读可写的. 当处理器在用户模式下执行时, 只有用户页面而且被标识为可写的页面才能写, 被标识为只读的页面则只允许读取. 所有属于超级用户的页面都不可访问, 无论读还是写.
+
+### JOS 的分段和分页
+
+前面介绍的分段/分页机制都是 x86硬件提供的内存管理/地址转换功能, 那么操作系统 JOS/XV6 是怎么实现内存管理的虚拟内容功能呢?
+
+这里再贴一张图, 描述虚拟地址、线性地址、物理地址之间的关系, 以及地址转换过程.
+
+<img src="images/Logical_linear_physical_address_2.JPG" alt="Logical_linear_physical_address_2" style="zoom:67%;" /> 
+
+虚拟内存是将较小的物理内存映射到很大的虚拟内存空间. 虚拟地址/线性地址用于虚拟内存空间地址的索引, 物理地址是物理内存中真实的地址. 物理地址可以由 MMU 硬件寻址得到, 而映射关系的建立(段表/页表)由操作系统完成.
+
+
+JOS 并没有使用分段机制, 这部分的详细过程如前文背景知识/启动过程所述, 在 bootloader 中, 段表的 base 都是 0, 当程序中给出虚拟地址 segment:offset 时, 无论选择的是哪个段表项, 最后线性地址 = base + offset = offset, 则线性地址和逻辑(虚拟)地址相同.
+
+如 lab2 中所说的, "一个 C 指针是虚拟地址的 “Offset” 组件. 在 `boot/boot.S` 我们安装了一个全局描述符表(GDT), 通过将所有的 segment base addresses 设置为 0, limits 为 0xffffffff 来有效地禁用段转换. 因此 "selector" 没有影响, 线性地址总是等于虚拟地址的 Offset".
+
+JOS 对分段及分页的使用参考 https://pdos.csail.mit.edu/6.828/2017/lec/l-josmem.html
+
+XV6 Chapter 2  Page tables
