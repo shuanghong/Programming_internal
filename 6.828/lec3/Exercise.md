@@ -12,17 +12,15 @@ https://blog.csdn.net/qq_33765199/article/details/104743134
 
 https://www.cnblogs.com/fatsheep9146/p/5124921.html
 
-https://www.dingmos.com/2020/07/24/25.html
+https://www.dingmos.com/index.php/category/MIT6-828/
 
 https://blog.csdn.net/cinmyheart/article/details/39827321
 
 https://github.com/clpsz/mit-jos-2014/tree/master/Lab2/Exercise01
 
-https://zhuanlan.zhihu.com/p/35890535
-
 https://ocw.mit.edu/courses/electrical-engineering-and-computer-science/6-828-operating-system-engineering-fall-2012/lecture-notes-and-readings/
 
-
+https://www.cnblogs.com/oasisyang/p/15495908.html
 
 ## 背景知识
 
@@ -1049,19 +1047,120 @@ void page_free(struct PageInfo *pp)
 
 ### JOS 的分段和分页
 
-前面介绍的分段/分页机制都是 x86硬件提供的内存管理/地址转换功能, 那么操作系统 JOS/XV6 是怎么实现内存管理的虚拟内容功能呢?
+前面介绍的分段/分页机制都是 x86硬件提供的内存管理/地址转换功能, 那么操作系统 JOS/XV6 是怎么实现内存管理的虚拟内存功能呢?
 
-这里再贴一张图, 描述虚拟地址、线性地址、物理地址之间的关系, 以及地址转换过程.
+这里再贴一张图, 描述虚拟地址、线性地址、物理地址之间的关系, 以及二级页表下的寻址过程.
 
 <img src="images/Logical_linear_physical_address_2.JPG" alt="Logical_linear_physical_address_2" style="zoom:67%;" /> 
 
-虚拟内存是将较小的物理内存映射到很大的虚拟内存空间. 虚拟地址/线性地址用于虚拟内存空间地址的索引, 物理地址是物理内存中真实的地址. 物理地址可以由 MMU 硬件寻址得到, 而映射关系的建立(段表/页表)由操作系统完成.
+虚拟内存是将较小的物理内存映射到很大的虚拟内存空间. 虚拟地址/线性地址用于虚拟内存空间地址的索引, 物理地址是物理内存中真实的地址. 物理地址可以由 MMU 硬件寻址得到, 而映射关系的建立(段表/页表)则由操作系统完成.
 
 
 JOS 并没有使用分段机制, 这部分的详细过程如前文背景知识/启动过程所述, 在 bootloader 中, 段表的 base 都是 0, 当程序中给出虚拟地址 segment:offset 时, 无论选择的是哪个段表项, 最后线性地址 = base + offset = offset, 则线性地址和逻辑(虚拟)地址相同.
 
 如 lab2 中所说的, "一个 C 指针是虚拟地址的 “Offset” 组件. 在 `boot/boot.S` 我们安装了一个全局描述符表(GDT), 通过将所有的 segment base addresses 设置为 0, limits 为 0xffffffff 来有效地禁用段转换. 因此 "selector" 没有影响, 线性地址总是等于虚拟地址的 Offset".
 
-JOS 对分段及分页的使用参考 https://pdos.csail.mit.edu/6.828/2017/lec/l-josmem.html
+JOS 对分段及分页的使用参考 How we will use paging (and segments) in JOS.pdf (https://pdos.csail.mit.edu/6.828/2017/lec/l-josmem.html)
 
-XV6 Chapter 2  Page tables
+* 仅使用段在进出内核时切换权限级别
+
+* 使用分页来构造进程地址空间
+
+* 使用分页来限制进程对自己的地址空间的内存访问, 下面是 JOS虚拟内存映射
+
+  <img src="images/JOS_virtual_memory_map.JPG" alt="JOS_virtual_memory_map" style="zoom:67%;" />
+
+* 为什么同时映射了内核和当前进程? 为什么不每个4GB呢? 这个和 xv6相比如何?
+
+* 为什么内核在顶端?
+
+* 为什么把所有的物理模型都标在上面? 例如, 为什么要有多个映射?
+
+* (稍后将讨论UVPT…)
+
+* 我们如何为不同的进程切换映射?
+
+`mmu.h` 中对线性地址的结构有详细的描述:
+
+```
+// A linear address 'la' has a three-part structure as follows:
+//
+// +--------10------+-------10-------+---------12----------+
+// | Page Directory |   Page Table   | Offset within Page  |
+// |      Index     |      Index     |                     |
+// +----------------+----------------+---------------------+
+//  \--- PDX(la) --/ \--- PTX(la) --/ \---- PGOFF(la) ----/
+//  \---------- PGNUM(la) ----------/
+//
+// The PDX, PTX, PGOFF, and PGNUM macros decompose linear addresses as shown.
+// To construct a linear address la from PDX(la), PTX(la), and PGOFF(la),
+// use PGADDR(PDX(la), PTX(la), PGOFF(la)).
+```
+
+* `Page directory index`: 页目录号(10 bit) ---> 2^10 个页表项
+* `Page table index`: 页表号(10 bit) ---> 2^10 个页
+* `Page offset`: 地址在页内的偏移(12 bit) -> 2^12 = 4KB 的页面大小
+
+每个页目录有 1024 个页表, 每个页表有 1024 个页, 每一页的大小是4KB. 整个映射的内存空间 2^32 = 4GB.
+
+`memlayout.h` 中可以看到整个虚拟内存空间的映射, 如上图所示.
+
+* `0xf0000000` 以上:`Remapped physical memory`, 物理内存的原样映射, 这一部分为虚拟地址
+* `0xefc00000` - `0xf0000000`: 内核栈区域，存放各个CPU的内核栈
+* `0xef800000`：`ULIM`, 内核内存区和用户内存区的分界线, 这以上用户不可读写
+* `0xef400000`：`UVPT`, 页表区域的开始
+* `0xef000000`：`UPAGES`, 页区域的开始
+* `0xeec00000`：`UTOP`, 用户只读区和读写区的分界线, 这以上到 `ULIM`之间用户只有读权限
+
+- `0xeebff000`:  1 PGSIZE, 用户的异常栈
+- `0xeebfe000`: 留空内存
+- `0xeebfd000 `: 用户栈, 可以向下增长
+- `0x00800000`以上：程序数据和用户的堆区
+
+#### The UVPT
+
+User read-only virtual page table.
+
+我们有一个页表的很好的概念模型, 它是一个 2^20 个条目的数组, 我们可以使用物理页号(PPN)来索引它. x86 2级分页机制打破了这种模型, 其将巨大的页表分解为多个页表和一个页目录. 我们希望以某种方式获得这个巨大的概念性页表 — JOS 中的进程将查看它, 以弄清它们的地址空间中发生了什么. 但是如何查看呢?
+
+幸运的是, 分页硬件在这方面做得很好 — 将一组片段页放在一个连续的地址空间中. 结果我们已经有了一个表, 表中的指针指向所有分段页表: 它就是页目录!
+
+因此, 我们可以使用页目录作为页表, 在虚拟地址空间中某个连续的 2^22 字节范围内, 映射概念上的巨大的 2^22 字节页表 (用 2^10 个页表示). 通过将 PDE 条目标记为只读, 我们可以确保用户进程不能修改其页表.
+
+CR3 指向页面目录. PDX 地址部分索引到页面目录中, 给出一个页表. PTX 部分索引到页表中给出一个页, 然后将低位添加进去.
+
+但是处理器没有页目录、页面表的概念, 而页面只是普通内存. 所以没有人说内存中的某一特定的页不能同时服务于两三个这样的东西. 处理器跟随指针: pd = lcr3(); pt = * (pd + 4*PDX); page = * (pt + 4 * PTX);
+
+<img src="images/JOS_virtual_memory_UVPT_1.JPG" alt="JOS_virtual_memory_UVPT_1" style="zoom: 67%;" />
+
+
+
+从图上看, 它从 CR3开始, 沿着三个箭头, 然后停止.
+
+如果我们在页面目录中放置一个指针, 在 Index V 处该指针指向自身. 然后当我们尝试转换虚拟地址时(PDX=V, PTX=V), 跟随三个箭头将使我们到达页目录. 因此, 虚拟页转换为包含页目录的页. 如下图.
+
+<img src="images/JOS_virtual_memory_UVPT_2.JPG" alt="JOS_virtual_memory_UVPT_2" style="zoom:67%;" />
+
+在 JOS 中, V = 0x3BD, 所以 UVPD 的虚拟地址是 (0x3BD<<22)|(0x3BD<<12).
+
+```
+在 mem_init(void) 中
+	kern_pgdir[PDX(UVPT)] = PADDR(kern_pgdir) | PTE_U | PTE_P;
+```
+
+现在, 如果我们试图转换一个 PDX = V 但是 PTX != V 的虚拟地址, 然后沿着 CR3的三个箭头结束, 这比通常的结束高出一级 (而不是在最后一种情况下的两级), 也就是说在页表中. 因此, PDX = V 的虚拟页面集形成了一个 4MB 区域的页面内容, 对于处理器而言, 该页面内容就是页面表本身. 
+
+在 JOS中, V = 0x3BD, 所以 UVPT 的虚拟地址是 (0x3BD<<22).
+
+因此, 由于我们巧妙地将 “no-op” 箭头插入到页面目录中, 我们将用作页目录的页, 和页表的页(通常实际上是不可见的)映射到了虚拟地址空间中.
+
+### XV6 Chapter 2  Page tables
+
+参考 xv6-chinese.pdf
+
+### 参考
+
+https://zhuanlan.zhihu.com/p/35890535
+
+https://www.cnblogs.com/oasisyang/p/15421981.html
+
