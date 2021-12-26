@@ -371,7 +371,7 @@ b. 隐式的加载指令, 例如 far CALL, JMP. 这些指令隐式的访问 CS �
 
 <img src="images/i386_Figure 5-8_Linear-Address-Format.JPG" alt="i386_Figure 5-8_Linear-Address-Format" style="zoom:67%;" />
 
-图 5-9显示了处理器如何将线性地址中的 DIR, PAGE, 和 OFFSET 字段转换为物理地址. 这个过程使用了两级页表, 寻址机制使用 DIR 字段来索引页目录表, 用 PAGE 字段来索引页表, 这样就确定了一个物理页桢, 然后再使用OFFSET 部分来索引该物理页桢, 最终访问所需要的数据.
+图 5-9显示了处理器如何将线性地址中的 DIR, PAGE, 和 OFFSET 字段转换为物理地址. 这个过程使用了两级页表, 寻址机制使用 DIR 字段来索引页目录表, 用 PAGE 字段来索引页表, 这样就确定了一个物理页桢, 然后再使用 OFFSET 部分来索引该物理页桢, 最终访问所需要的数据.
 
 <img src="images/i386_Figure 5-9_Page-Translation.JPG" alt="i386_Figure 5-9_Page-Translation" style="zoom:67%;" />
 
@@ -459,10 +459,6 @@ b. 隐式的加载指令, 例如 far CALL, JMP. 这些指令隐式的访问 CS �
 这样的话, 一个任务可以寻址 1K个段 (对于很多应用程序来说都足够了), 每个段可以高达 4M字节. 描述符和与之对应的页目录项, 还有与之对应的页表, 就可以同时分配同时回收.
 
 <img src="images/i386_Figure 5-13_Descriptor-Per-Page-Table.JPG" alt="i386_Figure 5-13_Descriptor-Per-Page-Table" style="zoom:67%;" />
-
-​	x86 page table hardware 
-
-​	Physical memory allocation 
 
 ## 实验准备
 
@@ -579,16 +575,12 @@ boot_alloc() 仅在初始化时, page_free_list 还没建立之前使用.
 参考 xv6-book Chapter 2 Page tables.
 
 ```
-	The kernel must allocate and free physical memory at run-time for page tables,
-process user memory, kernel stacks, and pipe buffers.
-	xv6 uses the physical memory between the end of the kernel and PHYSTOP for
-run-time allocation. It allocates and frees whole 4096-byte pages at a time. It keeps
-track of which pages are free by threading a linked list through the pages themselves.
-Allocation consists of removing a page from the linked list; freeing consists of adding the freed page to the list.
-	There is a bootstrap problem: all of physical memory must be mapped in order
-for the allocator to initialize the free list, but creating a page table with those mappings involves allocating page-table pages. xv6 solves this problem by using a separate page allocator during entry, which allocates memory just after the end of the kernel’s data segment. This allocator does not support freeing and is limited by the 4 MB mapping in the entrypgdir, but that is sufficient to allocate the first kernel page table.
-	xv6 使用从内核结尾到 PHYSTOP 之间的物理内存为运行时分配提供内存资源. 每次分配,它会将整块4096字节大小的页分配出去. xv6还会通过维护一个物理页组成的链表来寻找空闲页,所以分配内存需要将页移出该链表,而释放内存需要将页加入该链表.
-这里我们遇到了一个自举的问题:为了让分配器能够初始化该空闲链表, 所有的物理内存都必须要建立起映射, 但是建立包含这些映射的页表又必须要分配存放页表的页. xv6 通过在 entry中使用一个特别的页分配器来解决这个问题,该分配器会在内核数据部分的后面分配内存.该分配器不支持释放内存, 并受限于 entrypgdir中规定的 4MB分配大小, 即便如此,该分配器还是足够为内核的第一个页表分配出内存.
+	The kernel must allocate and free physical memory at run-time for page tables,process user memory, kernel stacks, and pipe buffers.
+	xv6 uses the physical memory between the end of the kernel and PHYSTOP for run-time allocation. It allocates and frees whole 4096-byte pages at a time. It keeps track of which pages are free by threading a linked list through the pages themselves. Allocation consists of removing a page from the linked list; freeing consists of adding the freed page to the list.
+	There is a bootstrap problem: all of physical memory must be mapped in order for the allocator to initialize the free list, but creating a page table with those mappings involves allocating page-table pages. 
+	xv6 solves this problem by using a separate page allocator during entry, which allocates memory just after the end of the kernel’s data segment. This allocator does not support freeing and is limited by the 4 MB mapping in the entrypgdir, but that is sufficient to allocate the first kernel page table.
+	xv6 使用从内核结尾到 PHYSTOP 之间的物理内存为运行时分配提供内存资源. 每次分配,它会将整块 4096byte 大小的页分配出去. xv6还会通过维护一个物理页组成的链表来寻找空闲页,所以分配内存需要将页移出该链表,而释放内存需要将页加入该链表.
+	这里我们遇到了一个自举的问题:为了让分配器能够初始化该空闲链表, 所有的物理内存都必须要建立起映射, 但是建立包含这些映射的页表又必须要分配存放页表的页. xv6 通过在 entry中使用一个特别的页分配器来解决这个问题,该分配器会在内核数据部分的后面分配内存.该分配器不支持释放内存, 并受限于 entrypgdir中规定的 4MB分配大小, 即便如此,该分配器还是足够为内核的第一个页表分配出内存.
 ```
 
 boot_alloc() 的实现有2个点要考虑:
@@ -716,8 +708,7 @@ void mem_init(void)
 	// Allocate an array of npages 'struct PageInfo's and store it in 'pages'.
 	// The kernel uses this array to keep track of physical pages: for
 	// each physical page, there is a corresponding struct PageInfo in this
-	// array.  'npages' is the number of physical pages in memory.  Use memset
-	// to initialize all fields of each struct PageInfo to 0.
+	// array.  'npages' is the number of physical pages in memory.  Use memset to initialize all fields of each struct PageInfo to 0.
 	// Your code goes here:
 
 
@@ -1179,4 +1170,55 @@ CR3 指向页面目录. PDX 地址部分索引到页面目录中, 给出一个�
 https://zhuanlan.zhihu.com/p/35890535
 
 https://www.cnblogs.com/oasisyang/p/15421981.html
+
+https://zhuanlan.zhihu.com/p/188511374
+
+## Exercise 4
+
+### pgdir_walk()
+
+由注释提供的信息可知:
+
+```
+入参: pde_t *pgdir, 指向页目录的指针; const void *va, 给定的虚拟地址; int create, 是否创建页表项.
+pgdir_walk() 返回一个指向线性地址'va'对应的 page table entry(PTE) 的指针
+===> 其实就是在第一级页目录中找页表项
+
+页表项可能不存在, 如果 create == false, 则返回 NULL; 否则使用 page_alloc()分配新的页表页, pgdir_walk() 返回指向新的页表页的指针.
+```
+
+函数实现如下:
+
+```
+pte_t * pgdir_walk(pde_t *pgdir, const void *va, int create)
+{
+    assert(pgdir);
+    uint32_t pd_idx = PDX(va); // page directory index 
+    pde_t pd_entry = pgdir[pd_idx];	// page entry in page directory
+	uint32_t pt_idx = PTX(va);	// page table index and entry
+
+    if ((pd_entry & PTE_P) != 1) // page entry(2nd level page table not exists
+    {
+        if (!create) 
+        	return NULL;
+        struct PageInfo *page_new = page_alloc(ALLOC_ZERO);
+        if (!page_new) 
+        	return NULL;
+        page_new->pp_ref += 1;
+        assert(page_new->pp_ref == 1);
+        assert(page_new->pp_link == NULL);
+        
+   		physaddr_t pg_pa = page2pa(page_new);
+		// add to page directory entry
+		pgdir[pd_idx] = pg_pa | PTE_P | PTE_W | PTE_U;
+
+		return (pte_t *)page2kva(pg_new) + pt_idx;
+    }
+	
+	// PTE_ADDR(pd_entry)---> page table addr, physical addr
+	// KADDR() ---> pointer shuold be a virtual addr
+	pte_t *pg_table = KADDR(PTE_ADDR(pd_entry));
+	return (pte_t *)(pg_table + pt_idx);
+}
+```
 
