@@ -12,6 +12,12 @@
 [OS2020spring - OscourseWiki (tsinghua.edu.cn)](http://os.cs.tsinghua.edu.cn/oscourse/OS2020spring) [Releases · dramforever/os-lectures-build · GitHub](https://github.com/dramforever/os-lectures-build/releases) 
 PS. 2014 年的课程章节与视频比较匹配, 2018 课件内容与视频更匹配, 2020 年课件最新, 包含一些 RISC-V 的内容.
 
+其他课件参考:
+
+https://github.com/computer-system-education/os-syllabi/tree/master/material
+
+https://github.com/LearningOS
+
 学习笔记: 
 [GitHub - OXygenPanda/3.OperatingSystem_in_depth: 视频学习 - 深入理解操作系统](https://github.com/OXygenPanda/3.OperatingSystem_in_depth)
 
