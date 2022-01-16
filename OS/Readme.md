@@ -6,6 +6,8 @@
 
 * 课件: https://www.cs.cmu.edu/~213/lectures/
 
+  * 教材 CSAPP
+
 * 历史课件: https://www.cs.cmu.edu/~213/resources.html
 
   ​                 http://www.cs.cmu.edu/afs/cs/academic/class/15213-f15/www/lectures/
