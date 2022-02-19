@@ -20,3 +20,7 @@
 ### CSCE 513 Computer Architecture
 
 * 主页 &  课件: https://passlab.github.io/CSCE513/
+
+### Operating Systems - Three Easy Pieces (中文书:操作系统导论)
+
+* 翻译: https://github.com/remzi-arpacidusseau/ostep-translations/tree/master/chinese
