@@ -1180,11 +1180,12 @@ https://zhuanlan.zhihu.com/p/188511374
 由注释提供的信息可知:
 
 ```
-入参: pde_t *pgdir, 指向页目录的指针; const void *va, 给定的虚拟地址; int create, 是否创建页表项.
-pgdir_walk() 返回一个指向线性地址'va'对应的 page table entry(PTE) 的指针
+入参: pde_t *pgdir,指向页目录的指针; const void *va, 给定的虚拟地址; int create, 是否创建页表项.
+pgdir_walk() 返回一个指向线性地址'va'对应的 page table entry(PTE) 的(虚拟)地址指针
 ===> 其实就是在第一级页目录中找页表项
 
-页表项可能不存在, 如果 create == false, 则返回 NULL; 否则使用 page_alloc()分配新的页表页, pgdir_walk() 返回指向新的页表页的指针.
+如果页表项不存在, 且create==1, 则使用 page_alloc()分配新的页表页; 否则create==0返回 NULL; pgdir_walk() 返回指向新的页表页的指针.
+完成后就实现了通过虚拟地址以及页目录首址来获取相应的页表项(PTE)地址的功能.
 ```
 
 函数实现如下:
@@ -1219,6 +1220,102 @@ pte_t * pgdir_walk(pde_t *pgdir, const void *va, int create)
 	// KADDR() ---> pointer shuold be a virtual addr
 	pte_t *pg_table = KADDR(PTE_ADDR(pd_entry));
 	return (pte_t *)(pg_table + pt_idx);
+}
+```
+
+### boot_map_region()
+
+根据注释信息:
+
+```
+入参: pde_t *pgdir,指向页目录的指针;va,虚拟地址;size,大小;pa,物理地址;perm,权限
+boot_map_region() 
+将虚拟地址空间[va, va+size)映射到物理地址[pa, pa+size), size 是页的整数倍(x PGSIZE),va和pa 都是页对齐.页表项的权限(低12bit)设为 perm|PTE_P 
+该函数只用于在 UTOP上 面建立“静态”映射, 因此它不应该改变被映射页面上的pp_ref字段
+
+static void 
+boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm)
+{
+	size_t page_num = size / PGSIZE;
+	size_t i = 0;
+	for(i = 0; i < page_num; i++)
+	{
+		pte_t * pt_entry = pgdir_walk(pgdir, (void*)(va + i * PGSIZE), 1);
+ 		*pt_entry = (pa + i * PGSIZE) | perm | PTE_P;
+	}
+}
+```
+
+### page_lookup()
+
+```
+page_lookup() 返回映射虚拟地址'va'的页面. 如果 pte_store不为零,则将该页 pte的地址存储在其中.
+这是由 page_remove使用,用来验证系统调用参数的页面权限,但不应该被大多数调用者使用
+
+提示:使用 pgdir_walk()和 pa2page()实现
+
+struct PageInfo *
+page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
+{
+	pte_t *pt_entry = pgdir_walk(pgdir, va, 0);
+	if(!pt_entry) 	// no page mapped at va
+		return NULL;
+	if(pte_store)
+	{
+		*pte_store = pt_entry;
+	}
+	return pa2page(PTE_ADDR(*pt_entry)); //*pt_entry解引用页表项, PTE_ADDR取页表中保存的物理帧号(PPN, 高20bit)
+}
+```
+
+### page_remove()
+
+```
+取消虚拟地址'va'的物理页面映射. 如果'va'没有物理页面,则什么也不做
+详细操作
+	- 减少物理页的引用计数
+	- 如果 refcount达到0,物理页面应该被释放
+	- 如果 PTE存在, 对应'va'的 pg表项应该设置为0
+	- 如果从页表中删除一个表项,TLB必须作废
+提示: 使用 page_lookup(),tlb_invalidate(),page_decref()实现
+
+void page_remove(pde_t *pgdir, void *va)
+{
+	pte_t * ptestore_temp = NULL;
+	struct PageInfo * pg_entry = page_lookup(pgdir, va, &ptestore_temp);
+	if(!pg_entry) 
+		return;
+	page_decref(pg_entry);
+	*ptestore_temp = 0;			// pg table entry corresponding to 'va' set to 0
+	tlb_invalidate(pgdir, va);	// invalidate a TLB entry
+}
+```
+
+### page_insert()
+
+```
+将虚拟地址'va'映射到物理页 pp, PTE 的权限(低12bit)设为 perm|PTE_P 
+要求:
+	- 如果已经有一个页面映射到'va',它应该被 page_remove()
+	- 根据需要, 应该分配一个页表并插入到'pgdir'(即二级也变放入一级页目录)
+	- 如果插入成功, pp->pp_ref 应该增加
+	- 如果一个页面以前在'va'处存在, TLB必须失效
+小提示: 考虑当同一个 pp被重新插入到同一个 pgdir中的同一个虚拟地址时会发生什么. 然而,不要在你的代码中区分这种情况,因为这经常会导致细微的bug;有一种优雅的方法可以在一个代码路径中处理所有内容
+提示:使用 pgdir_walk(),page_remove(),page2pa()实现
+
+int page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
+{
+	pte_t * pt_entry = pgdir_walk(pgdir, va, 1);
+	if(!pt_entry) // no page mapped at va
+		return -E_NO_MEM;
+	pp -> pp_ref += 1;
+	
+	if((*pt_entry) & PTE_P)	//remove page
+	{
+		page_remove(pgdir, va);
+	}
+	*pt_entry = page2pa(pp) | perm | PTE_P;
+	return 0;
 }
 ```
 
