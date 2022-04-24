@@ -162,7 +162,7 @@ check_page() 测试页表管理例程, 在继续之前应该确保它报告成�
 
 ## Part 3: Kernel Address Space
 
-JOS 将处理器的32位线性地址空间分成两部分. 用户环境(进程), 我们将在 lab 3 中开始加载和运行他, 可以控制下层的布局和内容, 而内核始终保持对上层的完全控制. 这个分界线是由  `inc/memlayout.h`中的符号`ULIM` 定义的, 为内核保留大约 256MB 的虚拟地址空间. 这就解释了为什么我们需要在 lab 1中给内核如此高的链接地址, 否则内核的虚拟地址空间将没有足够的空间同时映射到它下面的用户环境中.
+JOS 将处理器的32位线性地址空间分成两部分. 用户环境(进程), 我们将在 lab3 中开始加载和运行他, 可以控制下层的布局和内容, 而内核始终保持对上层的完全控制. 这个分界线是由  `inc/memlayout.h`中的符号`ULIM` 定义的, 为内核保留大约 256MB 的虚拟地址空间. 这就解释了为什么我们需要在 lab1中给内核如此高的链接地址, 否则内核的虚拟地址空间将没有足够的空间同时映射到它下面的用户环境中.
 
 对于本部分和以后的实验, 参考  `inc/memlayout.h`  中的 JOS 内存布局图会有帮助.
 
@@ -176,18 +176,20 @@ JOS 将处理器的32位线性地址空间分成两部分. 用户环境(进程),
 
 ### Initializing the Kernel Address Space
 
-现在, 你将在 `UTOP`上面设置地址空间: 地址空间的内核部分. `inc/memlayout.h` 显示了你应该使用的布局, 你将使用刚才编写的函数来设置适当的线性到物理映射.
+现在, 你将设置在 `UTOP`之上的地址空间: 地址空间的内核部分. `inc/memlayout.h` 显示了你应该使用的布局, 你将使用刚才编写的函数来设置适当的线性到物理映射.
 
 ### Exercise 5
 
 ```
-在调用 check_page() 之后, 填补 mem_init() 中缺失的代码
+在调用 check_page() 之后, 填补 mem_init() 中缺失的代码.
+你的代码将通过 check_kern_pgdir() 和 check_page_installed_pgdir() 的检查
 ```
 
 ### Question
 
 ```
-2. What entries (rows) in the page directory have been filled in at this point? What addresses do they map and where do they point? In other words, fill out this table as much as possible: 此时页面目录中的哪些条目(行)已被填充? 它们映射了哪些地址, 指向哪里? 换句话说, 尽可能多地填写这个表格.
+2. What entries (rows) in the page directory have been filled in at this point? What addresses do they map and where do they point? In other words, fill out this table as much as possible.
+此时页面目录中的哪些条目(行)已被填充? 它们映射了哪些地址, 指向哪里? 换句话说, 尽可能多地填写这个表格.
 ```
 
 | Entry | Base Virtual Address | Points to (logically):                |
@@ -224,7 +226,7 @@ JOS 将处理器的32位线性地址空间分成两部分. 用户环境(进程),
 
 地址空间布局备选方案.
 
-我们在JOS中使用的地址空间布局并不是唯一可能. 一个操作系统可以把内核映射到低线性地址, 而把线性地址空间的上半部分留给用户进程. x86 内核一般不采取这种方法, 但是因为一个 x86的向后兼容模式, 称为虚拟 8086模式,是处理器“硬连接”地使用底部的线性地址空间, 因此如果内核映射到这里则不能使用.
+我们在 JOS中使用的地址空间布局并不是唯一可能. 一个操作系统可以把内核映射到低线性地址, 而把线性地址空间的上半部分留给用户进程. x86 内核一般不采取这种方法, 但是因为一个 x86的向后兼容模式, 称为虚拟 8086模式,是处理器“硬连接”地使用底部的线性地址空间, 因此如果内核映射到这里则不能使用.
 
 甚至有可能,虽然更加困难, 设计内核为了不保留任何固定部分处理器的线性或虚拟地址空间本身, 而是有效地允许用户级进程无限制使用的整个 4GB 的虚拟地址空间, 同时还从这些进程中充分保护内核, 保护各自不同的进程!
 

@@ -619,53 +619,53 @@ boot_alloc() 的实现有2个点要考虑:
 
 2. 如何判断空间不够?
 
-代码实现如下:
+   代码实现如下:
 
-```
-	if (!nextfree) {
-		extern char end[];
-		nextfree = ROUNDUP((char *) end, PGSIZE);
+   ```
+   if (!nextfree) {
+   		extern char end[];
+   		nextfree = ROUNDUP((char *) end, PGSIZE);
+   
+           cprintf("nextfree: 0x%x, bss end addr: 0x%x\n", nextfree, end);
+   	}
+   	// LAB 2: Your code here.
+       if (n == 0) 
+       	return nextfree;
+   
+       result = nextfree;
+       nextfree = ROUNDUP((char *)(nextfree + n),PGSIZE);
+   
+       cprintf("nextfree: 0x%x\n", nextfree);
+       if ((uint32_t)nextfree > (KERNBASE + npages * PGSIZE))
+       {
+           panic("boot_alloc: there is no enough space\n");
+       }
+       return result;
+   ```
 
-        cprintf("nextfree: 0x%x, bss end addr: 0x%x\n", nextfree, end);
-	}
-	// LAB 2: Your code here.
-    if (n == 0) 
-    	return nextfree;
+   执行结果如下:
 
-    result = nextfree;
-    nextfree = ROUNDUP((char *)(nextfree + n),PGSIZE);
+   ```
+   6828 decimal is 15254 octal!
+   edata end addr: 0xf0112300, bss end addr: 0xf0112970
+   Physical memory: 131072K available, base = 640K, extended = 130432K
+   nextfree: 0xf0113000, bss end addr: 0xf0112970
+   nextfree: 0xf0114000
+   kernel panic at kern/pmap.c:145: mem_init: This function is not finished
+   ```
 
-    cprintf("nextfree: 0x%x\n", nextfree);
-    if ((uint32_t)nextfree > (KERNBASE + npages * PGSIZE))
-    {
-        panic("boot_alloc: there is no enough space\n");
-    }
-    return result;
-```
+   nextfree 是一个 static char *nextfree, 默认初始化为 0. 第一次执行时进入 if (!nextfree), 获取 bss end 地址之后的以 PGSIZE 对齐的地址空间 (0xf0113000). 用 result 保存 nextfree 并用于返回, nextfree 则继续取下一个 n 之后的地址空间.
 
-执行结果如下:
+   nextfree 其始终存放着下一个可以使用的空闲内存空间的虚拟地址. 当再次执行 boot_alloc(), 先  result = nextfree 用于返回, 再计算 nextfree. 如果 n==0, 则不再计算 nextfree.
 
-```
-6828 decimal is 15254 octal!
-edata end addr: 0xf0112300, bss end addr: 0xf0112970
-Physical memory: 131072K available, base = 640K, extended = 130432K
-nextfree: 0xf0113000, bss end addr: 0xf0112970
-nextfree: 0xf0114000
-kernel panic at kern/pmap.c:145: mem_init: This function is not finished
-```
+   如何判断空间不够? 
 
-nextfree 是一个 static char *nextfree, 默认初始化为 0. 第一次执行时进入 if (!nextfree), 获取 bss end 地址之后的以 PGSIZE 对齐的地址空间 (0xf0113000). 用 result 保存 nextfree 并用于返回, nextfree 则继续取下一个 n 之后的地址空间.
+   在函数 i386_detect_memory() 中, 通过 *CMOS calls* 得到剩余的物理内存. 其中 basemem 就是 0-640k 之间的内存, extmem 是 1M 以后的内存. npages 是剩余物理内存的页数, 每页大小是 PGSIZE, 因此一共能分配的空间大小为 (npages * PGSIZE). 而虚拟地址的 base 为 KERNBASE, 因此最大能访问的虚拟地址为 KERNBASE + (npages * PGSIZE).
 
-nextfree 其始终存放着下一个可以使用的空闲内存空间的虚拟地址. 当再次执行 boot_alloc(), 先  result = nextfree 用于返回, 再计算 nextfree. 如果 n==0, 则不再计算 nextfree. 
-
-如何判断空间不够? 
-
-在函数 i386_detect_memory() 中, 通过 *CMOS calls* 得到剩余的物理内存. 其中 basemem 就是 0-640k 之间的内存, extmem 是 1M 以后的内存. npages 是剩余物理内存的页数, 每页大小是 PGSIZE, 因此一共能分配的空间大小为 (npages * PGSIZE). 而虚拟地址的 base 为 KERNBASE (inc/memlayout.h, 因此最大能访问的虚拟地址为 KERNBASE + (npages * PGSIZE).
-
-JOS 把整个物理内存空间划分成三个部分, 参考 inc/memlayout.h 注释以及前文地址空间布局图:
-0x00000~0xA0000(640K), 这部分叫 Base memory, 是可用的.
-0xA0000~0x100000, 这部分叫做 IO hole, 是不可用的. 主要被用来分配给外部设备了. 
-0x100000~ ???, 1M 以后的空间, 这部分叫做 Extended memory, 是可用的, 这是最重要的内存区域.
+   JOS 把整个物理内存空间划分成三个部分, 参考 inc/memlayout.h 注释以及前文地址空间布局图:
+   0x00000~0xA0000(640K), 这部分叫 Base memory, 是可用的.
+   0xA0000~0x100000, 这部分叫做 IO hole, 是不可用的. 主要被用来分配给外部设备了. 
+   0x100000~ ???, 1M 以后的空间, 这部分叫做 Extended memory, 是可用的, 这是最重要的内存区域.
 
 ### mem_init()
 
@@ -798,13 +798,13 @@ npages_basemem = 640 / (PGSIZE / 1024) = 160
 
 接着调用 `kern_pgdir = (pde_t *) boot_alloc(PGSIZE);` 
 
-kern_pgdir 是一个 pde_t * 的指针, 指向操作系统的页目录表, 操作系统之后工作在虚拟内存模式下时, 就需要这个页目录表进行地址转换. 根据前面 boot_alloc() 的执行结果, 这个地址紧跟在 Kernal bss 段之后 (0xf0113000).
+kern_pgdir 是一个 pde_t * 的指针, 指向操作系统的页目录表, 操作系统保护模式之后工作在虚拟内存模式下时, 就需要这个页目录表进行地址转换. 根据前面 boot_alloc() 的执行结果, 这个地址紧跟在 Kernal bss 段之后 (0xf0113000).
 
 ```
 nextfree: 0xf0113000, bss end addr: 0xf0112970
 ```
 
-分配一个页 (PGSIZE: 4096 Bytes) 大小的内存空间作为第一级的页目录表. 一个页表项是 4 Bytes, 所以一共有 1024 个页表, 参考图 5-9.
+分配一个页 (PGSIZE: 4096bytes) 大小的内存空间作为第一级的页目录表. 一个页表项是 4Bytes, 所以一共有 1024 个页表, 参考图 5-9.
 
 接着执行   `kern_pgdir[PDX(UVPT)] = PADDR(kern_pgdir) | PTE_U | PTE_P;`
 
@@ -849,7 +849,7 @@ kern_pgdir[0x3bd] = PADDR(kern_pgdir)|PTE_U|PTE_P = 0x00114000|0x004|0x001
 #define PDX(la)		((((uintptr_t) (la)) >> PDXSHIFT) & 0x3FF)
 
 参考图 5-8所示的线性地址格式, 以及图 5-9分页地址转换.
-PDX(UVPT) 即取 UVPT 的 DIR部分(bit31~bit22), 使用 DIR字段来索引页目录表.
+PDX(UVPT) 即取 UVPT的 DIR部分(bit31~bit22), 使用 DIR字段来索引页目录表.
 PADDR(kern_pgdir) 是取 kern_pgdir 对应的物理地址, PTE_U 设置页表项的 User/Supervisor 位, PTE_P 设置 Present 位.
 ```
 
@@ -862,10 +862,10 @@ PADDR(kern_pgdir) 是取 kern_pgdir 对应的物理地址, PTE_U 设置页表项
 ```
 如果访问地址 0xef400000上的数据, 其线性地址格式为: 0x3bd << 22 | 0 | 0
 高 10bit为0x3bd, kern_pgdir[0x3bd] = 0x00114000|0x004|0x001 (物理地址)
-中间 10bit为 0, 即访问页表的第 0 项, 也是物理地址 0x00114000|0x004|0x001
+中间 10bit为 0, 即访问页表的第 0项, 也是物理地址 0x00114000|0x004|0x001
 ```
 
-由于在启动过程中, 已经将虚拟地址 [0xf0000000, 0xf0400000) 的 4MB的地址空间映射到物理地址 [0, 0x0400000). 当访问 UVPT 这个虚拟地址时,  相当于访问物理地址 0x00114000,相当于访问一级页表目录.
+由于在启动过程中, 已经将虚拟地址 [0xf0000000, 0xf0400000) 的 4MB的地址空间映射到物理地址 [0, 0x0400000). 当访问 UVPT这个虚拟地址时, 相当于访问物理地址 0x00114000,相当于访问一级页表目录.
 
 后文 Excrcise2中还有关于 UVPT的描述.
 
@@ -1234,8 +1234,8 @@ pte_t * pgdir_walk(pde_t *pgdir, const void *va, int create)
 ```
 入参: pde_t *pgdir,指向页目录的指针;va,虚拟地址;size,大小;pa,物理地址;perm,权限
 boot_map_region() 
-将虚拟地址空间[va, va+size)映射到物理地址[pa, pa+size), size 是页的整数倍(x PGSIZE),va和pa 都是页对齐.页表项的权限(低12bit)设为 perm|PTE_P 
-该函数只用于在 UTOP上 面建立“静态”映射, 因此它不应该改变被映射页面上的pp_ref字段
+将虚拟地址空间[va, va+size)映射到物理地址[pa, pa+size), size 是页的整数倍(x PGSIZE),va和pa都是页对齐.页表项的权限(低12bit)设为 perm|PTE_P 
+该函数只用于在 UTOP上面建立“静态”映射, 因此它不应该改变被映射页面上的 pp_ref字段
 
 static void 
 boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm)
@@ -1321,5 +1321,75 @@ int page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
 	*pt_entry = page2pa(pp) | perm | PTE_P;
 	return 0;
 }
+```
+
+## Exercise 5
+
+### mem_init() 剩余代码
+
+填补 check_page() 之后的代码, 通过 check_kern_pgdir() 和 check_page_installed_pgdir() 的检查.
+
+根据注释走一遍:
+
+```
+	// Now we set up virtual memory
+
+	//////////////////////////////////////////////////////////////////////
+	// Map 'pages' read-only by the user at linear address UPAGES
+	// Permissions:
+	//    - the new image at UPAGES -- kernel R, user R
+	//      (ie. perm = PTE_U | PTE_P)
+	//    - pages itself -- kernel RW, user NONE
+	// Your code goes here:
+	// 将pages数组映射到UPAGE地址区域以上
+	boot_map_region(kern_pgdir, UPAGES, npages * sizeof(struct PageInfo), PADDR(pages), PTE_U | PTE_P);
+
+	//////////////////////////////////////////////////////////////////////
+	// Use the physical memory that 'bootstack' refers to as the kernel
+	// stack.  The kernel stack grows down from virtual address KSTACKTOP.
+	// We consider the entire range from [KSTACKTOP-PTSIZE, KSTACKTOP)
+	// to be the kernel stack, but break this into two pieces:
+	//     * [KSTACKTOP-KSTKSIZE, KSTACKTOP) -- backed by physical memory
+	//     * [KSTACKTOP-PTSIZE, KSTACKTOP-KSTKSIZE) -- not backed; so if
+	//       the kernel overflows its stack, it will fault rather than
+	//       overwrite memory.  Known as a "guard page".
+	//     Permissions: kernel RW, user NONE
+	// Your code goes here:
+	boot_map_region(kern_pgdir, (KSTACKTOP - KSTKSIZE), KSTKSIZE, PADDR(bootstack), PTE_P | PTE_W);
+
+	//////////////////////////////////////////////////////////////////////
+	// Map all of physical memory at KERNBASE.
+	// Ie.  the VA range [KERNBASE, 2^32) should map to
+	//      the PA range [0, 2^32 - KERNBASE)
+	// We might not have 2^32 - KERNBASE bytes of physical memory, but
+	// we just set up the mapping anyway.
+	// Permissions: kernel RW, user NONE
+	// Your code goes here:
+	size_t KERNSIZE = (unsigned)0xffffffff - KERNBASE;
+	boot_map_region(kern_pgdir, KERNBASE, KERNSIZE, 0, PTE_W | PTE_P);
+
+	// Check that the initial page directory has been set up correctly.
+	check_kern_pgdir();
+
+	// Switch from the minimal entry page directory to the full kern_pgdir
+	// page table we just created.	Our instruction pointer should be
+	// somewhere between KERNBASE and KERNBASE+4MB right now, which is
+	// mapped the same way by both page tables.
+	//
+	// If the machine reboots at this point, you've probably set up your
+	// kern_pgdir wrong.
+	lcr3(PADDR(kern_pgdir));
+
+	check_page_free_list(0);
+
+	// entry.S set the really important flags in cr0 (including enabling
+	// paging).  Here we configure the rest of the flags that we care about.
+	cr0 = rcr0();
+	cr0 |= CR0_PE|CR0_PG|CR0_AM|CR0_WP|CR0_NE|CR0_MP;
+	cr0 &= ~(CR0_TS|CR0_EM);
+	lcr0(cr0);
+
+	// Some more checks, only possible after kern_pgdir is installed.
+	check_page_installed_pgdir();
 ```
 
