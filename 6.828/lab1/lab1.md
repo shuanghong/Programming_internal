@@ -11,8 +11,9 @@
 
 ![](images/git_branch.JPG)
 
+如果工作在 "non-Athena"的机器上, 需要安装 qumu 以及 gcc 等, 参考 [https://pdos.csail.mit.edu/6.828/2017/tools.html](https://pdos.csail.mit.edu/6.828/2017/tools.html "tools page"). 
 
-如果工作在 "non-Athena machine", 需要安装 qumu 以及 gcc 等, 参考 [https://pdos.csail.mit.edu/6.828/2017/tools.html](https://pdos.csail.mit.edu/6.828/2017/tools.html "tools page"). 对 qemu 有几个有用的调试修改, 后续的一些实验依赖这些补丁. 如果工作环境使用了本地 ELF 工具链, 比如 Linux, 大多数 BSD, 但不是 OS X, 可以简单地从软件包管理器安装 gcc, 否则按照工具页面上的说明操作.
+对 qemu 有几个有用的调试修改, 后续的一些实验依赖这些补丁. 如果工作环境使用了本地 ELF 工具链, 比如 Linux, 大多数 BSD, 但不是 OSX, 可以简单地从软件包管理器安装 gcc, 否则按照工具页面上的说明操作.
 
 #### Test Your Compiler Toolchain
 
@@ -58,7 +59,18 @@
 
     ![qemu_install_path](images/qemu_install_path.JPG)
 
+### Lab tools guide
+
+[lab tools guide](https://pdos.csail.mit.edu/6.828/2017/labguide.html)
+
+#### Reference
+
+##### JOS makefile
+
+The JOS GNU makefile 包括许多以各种方式运行 JOS的虚假目标, 所有这些目标都配置 QEMU监听 GDB连接 (`*-gdb`目标也等待这个连接). 要在 QEMU运行后启动, 只需从 lab 目录运行gdb. 我们提供了一个 .gdbinit文件, 它自动将 GDB指向 QEMU, 加载内核符号文件, 并在 16位和 32位模式之间切换. 退出 GDB 将会关闭 QEMU.
+
 ## Part 1: PC Bootstrap
+
 第一个练习的目的是介绍 x86汇编语言以及 PC的引导启动过程, 开始 qemu 和 qemu/gdb 调试.
 
 ### Getting Started with x86 assembly
@@ -157,8 +169,6 @@ physical address = 16*segment + offset
 ### Exercise 2
 
 使用 GDB si(Step Instruction) 命令跟踪 ROM BIOS 几条指令, 试图去猜测它可能在做什么. 参考  [6.828 reference materials page](https://pdos.csail.mit.edu/6.828/2017/reference.html) 上的一些资料, 不需要弄清楚所有的细节, 只需大致了解 BIOS 首先要做什么.
-
-
 
 ## Part 2: The Boot Loader
 
