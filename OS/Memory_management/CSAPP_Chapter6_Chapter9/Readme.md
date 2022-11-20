@@ -1,4 +1,15 @@
-参考资料来源:
+
+
+教程:
+
+1. 深入理解计算机系统 - CSAPP重点导读
+
+   ​	第06章：存储器层次结构 https://fengmuzi2003.gitbook.io/csapp3e/di-06-zhang-cun-chu-qi-ceng-ci-jie-gou
+   ​	第09章：虚拟内存 https://fengmuzi2003.gitbook.io/csapp3e/dixzhang-xu-ni-nei-cun
+
+2. 每个程序员都应该知道的内存知识
+
+资料来源:
 
 CMU:
 
