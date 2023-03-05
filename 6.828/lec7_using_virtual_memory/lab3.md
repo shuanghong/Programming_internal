@@ -13,7 +13,7 @@ git checkout -b lab3 origin/lab3
 git merge lab2
 ```
 
-Lab 3包含了一些新的源文件, 应该浏览一下:
+Lab3 包含了一些新的源文件, 应该浏览一下:
 
 | `inc/`  | `env.h`       | Public definitions for user-mode environments, 用户环境(进程)公共定义 |
 | ------- | ------------- | ------------------------------------------------------------ |
@@ -50,7 +50,7 @@ Lab 3包含了一些新的源文件, 应该浏览一下:
 
 ## Part A: User Environments and Exception Handling
 
-新的文件 `inc/env.h` 包含 JOS中用户环境的基本定义. 内核使用 Env数据结构来跟踪每个用户环境. 在 lab中你最初将只创建一个环境, 但需要设计 JOS内核以支持多个环境. Lab 4 将利用这个特性, 允许用户环境fork 其他环境.
+新的文件 `inc/env.h` 包含 JOS中用户环境的基本定义. 内核使用 Env数据结构来跟踪每个用户环境. 在 lab中你最初将只创建一个环境, 但需要设计 JOS内核以支持多个环境. Lab4 将利用这个特性, 允许用户环境 fork其他环境.
 
 正如你在 `kern/envirv.c`中看到的, 内核维护了三个与环境相关的主要全局变量:
 
@@ -62,7 +62,7 @@ static struct Env *env_free_list;	// Free environment list
 
 一旦 JOS启动并运行, `*env` 指针指向一个表示系统中所有环境(进程)的 Env结构数组. 在我们的设计中, JOS内核将支持同一时刻最多 NENV个活跃的环境, 尽管在任何给定时间通常会有更少的运行环境. (NENV 是在 `inc/env.h` 中 `#define` 的常量). 一旦分配了它，envs 数组将包含每个可能的 NENV 环境的 Env数据结构的单个实例.
 
-JOS 内核将所有未激活的 Env结构保存在 `env_free_list` 中, 这种设计允许轻松地分配和回收环境, 因为只需将它们添加到空闲列表中或从空闲列表中删除即可.
+JOS内核将所有未激活的 Env结构保存在 `env_free_list` 中, 这种设计允许轻松地分配和回收环境, 因为只需将它们添加到空闲列表中或从空闲列表中删除即可.
 
 内核使用 `curenv` 符号在任何给定时间跟踪当前正在执行的环境. 在引导期间, 在第一个环境运行之前, `curenv` 最初被设置为 NULL.
 
@@ -85,7 +85,7 @@ struct Env {
 };
 ```
 
-**env_tf**: 在环境未运行时保存该环境的已保存寄存器值: 即,当内核或其他环境正在运行时. 当从用户模式切换到内核模式时, 内核会保存这些信息, 以便稍后恢复中断的环境.
+**env_tf**: 在环境未运行时保存该环境的已保存寄存器值: 即当内核或其他环境正在运行时, 当从用户模式切换到内核模式时, 内核会保存这些信息, 以便稍后恢复中断的环境.
 
 **env_link**: 指向 `env_free_list`上的下一个 Env. `env_free_list` 指向列表上的第一个空闲环境
 
@@ -110,9 +110,9 @@ struct Env {
 
 ### Allocating the Environments Array
 
-在 lab 2中你在 `mem_init()` 函数中分配了 `pages[]` 数组的地址空间, 用于记录内核中所有的页的信息. 现在你需要进一步去修改 `mem_init()` 函数, 来分配一个类似的 `Env` 结构体数组, 叫做 `envs`.
+在 lab2中你在 `mem_init()` 函数中分配了 `pages[]` 数组的地址空间, 用于记录内核中所有的页的信息. 现在你需要进一步去修改 `mem_init()` 函数, 来分配一个类似的 `Env` 结构体数组, 叫做 `envs`.
 
-#### Exercise 1
+### Exercise 1
 
 修改 `kern/pmap.c` 中的 `mem_init()` 来分配和映射 `envs` 数组. 这个数组由 `Env` 结构的 `NENV` 个实例组成, 就像分配 `pages` 数组的方式一样. 与 `pages` 数组一样.
 `envs` 也应该映射到虚拟地址 `UENVS`处(在 `inc/memlayout.h` 中定义), 是用户模式只读的, 以便用户进程可以从该数组读取.
@@ -135,7 +135,400 @@ check_kern_pgdir() succeeded!
 
 ```
 
+### Creating and Running Environments
+
+你将需要编写运行用户环境所需的 `kern/env.c`代码, 因为我们还没有文件系统, 所以我们将设置内核来加载嵌入在内核中的静态二进制映像. JOS将此二进制文件作为 ELF可执行映像嵌入内核中.
+
+Lab3 `GNUmakefile` 在 `obj/user/`目录中生成了许多二进制映像. 在 `kern/Makefrag`文件中, 你会发现一些魔法将这些二进制文件直接“链接”到内核可执行文件中, 就好像它们是 .o文件一样. 链接器命令行上的 `-b binary`选项会将这些文件作为“原始”未解释的二进制文件链接, 而不是作为编译器生成的常规 .o文件链接. (就链接器而言, 这些文件根本不必是 ELF文件——它们可以是任何格式, 例如文本文件或图片) 如果在构建内核后查看`obj/kern/kernel.sym`, 你会注意到链接器“神奇地”产生了许多有趣的符号, 这些符号具有晦涩的名字, 如_binary_obj_user_hello_start, _binary_obj_user_hello_end 和 _binary_obj_user_hello_size. 链接器通过修改二进制文件的文件名来生成这些符号名称; 这些符号为常规内核代码提供了引用嵌入式二进制文件的方法.
+
+在 `kern/init.c` `i386_init()`中, 你将看到在某个环境中运行这些二进制映像之一的代码. 但是建立用户环境的关键功能还不完备, 你需要填写它们.
+
+### Exercise 2
+
+完成 `env.c` 文件中的下面函数.
+
+```
+在编写这些函数时, 你可能会发现新的 cprintf %e很有用——它打印与错误代码对应的描述. 例如,
+	r = -E_NO_MEM;
+	panic("env_alloc: %e", r);
+will panic with the message "env_alloc: out of memory".
+```
+
+- env_init()
+
+  初始化 envs数组中的所有 Env结构,并将它们添加到 env_free_list中. 还调用 env_init_percpu, 它将分段硬件配置为特权级别 0(内核)和特权级别 3(用户)的独立段.
+
+  ```
+  void env_init(void)
+  {
+  	// Set up envs array
+  	// LAB 3: Your code here.
+  	for(int i = NENV-1; i >= 0; i++)
+  	{
+  		envs[i].env_id = 0;
+  		envs[i].env_status = ENV_FREE;
+  		envs[i].env_link = env_free_list;
+  		env_free_list = &envs[i];
+  	}
+  	// Per-CPU part of the initialization
+  	env_init_percpu();
+  	cprintf("env_init() done!\n");	
+  }
+  ```
+
+- env_setup_vm()
+
+  为新环境分配一个页目录(每个环境/进程都有一个自己的 page directory), 并初始化新环境地址空间的内核部分.
+
+  只设置页目录表中和操作系统内核跟内核相关的页目录项, 用户环境的页目录项不需要设置, 因为所有用户环境的页目录表中和操作系统相关的页目录项都是一样的(除了虚拟地址 UVPT, 这个也会单独进行设置)
+
+  ```
+  static int
+  env_setup_vm(struct Env *e)
+  {
+  	int i;
+  	struct PageInfo *p = NULL;
+  
+  	// Allocate a page for the page directory
+  	if (!(p = page_alloc(ALLOC_ZERO)))
+  		return -E_NO_MEM;
+  
+  	// Now, set e->env_pgdir and initialize the page directory.
+  	//
+  	// Hint:
+  	//    - The VA space of all envs is identical above UTOP
+  	//	(except at UVPT, which we've set below).
+  	//	See inc/memlayout.h for permissions and layout.
+  	//	Can you use kern_pgdir as a template?  Hint: Yes.
+  	//	(Make sure you got the permissions right in Lab 2.)
+  	//    - The initial VA below UTOP is empty.
+  	//    - You do not need to make any more calls to page_alloc.
+  	//    - Note: In general, pp_ref is not maintained for
+  	//	physical pages mapped only above UTOP, but env_pgdir
+  	//	is an exception -- you need to increment env_pgdir's
+  	//	pp_ref for env_free to work correctly.
+  	//    - The functions in kern/pmap.h are handy.
+  
+  	// LAB 3: Your code here.
+      // 自增引用计数
+  	p->pp_ref++;
+      // 页目录的虚拟地址
+  	e->env_pgdir = (pde_t*)page2kva(p);
+  	cprintf("e->env_pgdir:0x%08x\n",e->env_pgdir);
+  
+      // 这部分的页目录值和 kern_pgdir是一致的
+      memcpy(e->env_pgdir, kern_pgdir, PGSIZE);
+   
+      //Map the directory below UTOP
+      /*
+      for(i = 0; i < PDX(UTOP); i++) 
+      {
+          e->env_pgdir[i] = 0;        
+      }
+      */
+      
+      //Map the directory above UTOP
+      /*
+      for(i = PDX(UTOP); i < NPDENTRIES; i++) 
+      {
+          e->env_pgdir[i] = kern_pgdir[i];
+      }
+      */
+  	
+  	// UVPT maps the env's own page table read-only.
+  	// Permissions: kernel R, user R
+  	e->env_pgdir[PDX(UVPT)] = PADDR(e->env_pgdir) | PTE_P | PTE_U;
+  	cprintf("env_setup_vm() done!\n");	
+  
+  	return 0;
+  }
+  
+  ```
+
+- region_alloc()
+
+  为环境分配和映射物理内存. 分配即分配物理页, 使用的是page_alloc(); 映射即安装到页目录和页表中.
+
+  注意要先把起始地址和终止地址进行页对齐, 对其之后我们就可以以页为单位, 为其一页一页的分配内存, 并且修改页目录表和页表
+
+  ```
+  static void
+  region_alloc(struct Env *e, void *va, size_t len)
+  {
+  	// LAB 3: Your code here.
+  	void *start = (void *)ROUNDDOWN((uint32_t)va, PGSIZE);
+  	void *end = (void *)ROUNDUP((uint32_t)va+len, PGSIZE);
+  
+      struct PageInfo *p = NULL;
+      void *i = NULL;
+      int ret = 0;
+      for(i = start; i < end; i += PGSIZE)
+      {
+      	p = page_alloc(0);
+          if(p == NULL)
+          {
+  			panic("region_alloc(), allocation failed!!!");       
+          }
+   		// 修改页目录表和页表
+          ret = page_insert(e->env_pgdir, p, i, PTE_W|PTE_U);
+          if(ret != 0)
+          {
+              panic("region_alloc(), page_insert failed!!!");
+          }
+  	}
+       
+  	// (But only if you need it for load_icode.)
+  	//
+  	// Hint: It is easier to use region_alloc if the caller can pass
+  	//   'va' and 'len' values that are not page-aligned.
+  	//   You should round va down, and round (va + len) up.
+  	//   (Watch out for corner-cases!)
+  }
+  ```
+
+- load_icode()
+
+  解析 ELF二进制映像,就像 bootloader 那样, 并将其内容加载到新环境的用户地址空间中.
+
+  参考 boot/main.c中 bootloader 加载 kernel image的过程. 区别在于, bootloader是从 disk中加载 kernel, 而load_icode()要加载的二进制文件已经在 memory中了.
+
+  有以下几点注意:
+
+  1. 只有 p_type=ELF_PROG_LOAD的段才需要被被加载. 在加载 program segment时, 是 load到 user environment, 因此需要在 load之前使用 lcr3指令切换到当前 environment 的 page directory
+  2. ph->p_va 是需要被加载到的虚地址
+  3. ph->p_memsz 是整个在内存中占的大小, 也是我们申请空间时的大小
+  4. 从 binary + ph->p_offset 开始的 ph->p_filesz字节需要被复制到 ph->p_va处
+  5. 需要考虑一些 ELF头的入口点处理, 将该环境的指令寄存器 eip的值设置为该 elf格式文件的 e_entry的值
+  6. 在指定完 program的 entry point之后, 需要将 page directory切换回 kernel directory
+
+  ```
+  static void
+  load_icode(struct Env *e, uint8_t *binary)
+  {
+  	// Hints:
+  	//  Load each program segment into virtual memory
+  	//  at the address specified in the ELF segment header.
+  	//  You should only load segments with ph->p_type == ELF_PROG_LOAD.
+  	//  Each segment's virtual address can be found in ph->p_va
+  	//  and its size in memory can be found in ph->p_memsz.
+  	//  The ph->p_filesz bytes from the ELF binary, starting at
+  	//  'binary + ph->p_offset', should be copied to virtual address
+  	//  ph->p_va.  Any remaining memory bytes should be cleared to zero.
+  	//  (The ELF header should have ph->p_filesz <= ph->p_memsz.)
+  	//  Use functions from the previous lab to allocate and map pages.
+  	//
+  	//  All page protection bits should be user read/write for now.
+  	//  ELF segments are not necessarily page-aligned, but you can
+  	//  assume for this function that no two segments will touch
+  	//  the same virtual page.
+  	//
+  	//  You may find a function like region_alloc useful.
+  	//
+  	//  Loading the segments is much simpler if you can move data
+  	//  directly into the virtual addresses stored in the ELF binary.
+  	//  So which page directory should be in force during
+  	//  this function?
+  	//
+  	//  You must also do something with the program's entry point,
+  	//  to make sure that the environment starts executing there.
+  	//  What?  (See env_run() and env_pop_tf() below.)
+  
+  	// LAB 3: Your code here.
+  
+  	struct Elf *elf = (struct Elf *)binary;
+  	if (elf->e_magic != ELF_MAGIC)
+  	{
+  		panic("invalid ELF file!");
+  	}
+  	
+  	struct Proghdr *ph,*end_ph;
+  	ph = (struct Proghdr *)((uint8_t *)elf + elf->e_phoff);
+  	end_ph = ph + elf->e_phnum;
+  	cprintf("ph:0x%08x, end_ph:0x%08x\n", ph, end_ph);
+  	
+  	lcr3(PADDR(e->env_pgdir));
+  	
+  	for (; ph < end_ph; ph++)
+  	{
+  		if(ph->p_type==ELF_PROG_LOAD){
+  			if((ph->p_memsz - ph->p_filesz) < 0)
+  			{
+  				panic("p_memsz < p_filesz");
+  			}
+  			region_alloc(e, (void*)ph->p_va, ph->p_memsz);
+  			memcpy((void*)ph->p_va, (void*)binary + ph->p_offset, ph->p_filesz);
+  			memset((void*)(ph->p_va + ph->p_filesz), 0, ph->p_memsz - ph->p_filesz);
+  		}
+  	}
+  	e->env_tf.tf_eip = elf->e_entry;
+  	lcr3(PADDR(kern_pgdir));
+  	
+  	// Now map one page for the program's initial stack
+  	// at virtual address USTACKTOP - PGSIZE.
+  	// LAB 3: Your code here.
+  	region_alloc(e, (void*)(USTACKTOP - PGSIZE), PGSIZE);
+  	
+  	cprintf("load_icode() done!\n");	
+  }
+  ```
+
+- env_create()
+
+  使用 env_alloc分配一个环境, 并调用 load_icode将 ELF二进制文件加载到其中
+
+  ```
+  void
+  env_create(uint8_t *binary, enum EnvType type)
+  {
+  	struct Env *new_env;
+  	int ret = env_alloc(&new_env,0);
+  	if(ret != 0)
+  	{
+  		panic("env_create() env_alloc fail: %e",ret);
+  	}
+  	
+  	new_env->env_type = type;
+  	cprintf("env_create() done before load_icode()\n");
+  
+  	load_icode(new_env, binary);
+  }
+  ```
+
+- env_run()
+
+  启动一个给定的环境并以用户模式运行.
+
+  ```
+  void
+  env_run(struct Env *e)
+  {
+  	// Step 1: If this is a context switch (a new environment is running):
+  	//	   1. Set the current environment (if any) back to
+  	//	      ENV_RUNNABLE if it is ENV_RUNNING (think about
+  	//	      what other states it can be in),
+  	//	   2. Set 'curenv' to the new environment,
+  	//	   3. Set its status to ENV_RUNNING,
+  	//	   4. Update its 'env_runs' counter,
+  	//	   5. Use lcr3() to switch to its address space.
+  	// Step 2: Use env_pop_tf() to restore the environment's
+  	//	   registers and drop into user mode in the
+  	//	   environment.
+  
+  	// Hint: This function loads the new environment's state from
+  	//	e->env_tf.  Go back through the code you wrote above
+  	//	and make sure you have set the relevant parts of
+  	//	e->env_tf to sensible values.
+  
+  	// LAB 3: Your code here.
+  	if((curenv != NULL) && curenv->env_status == ENV_RUNNING)
+  	{
+  		curenv->env_type = ENV_RUNNABLE;
+  	}
+  	curenv = e;
+  	e->env_status = ENV_RUNNING;
+  	e->env_runs++;
+  	lcr3(PADDR(e->env_pgdir));
+  	
+      //保存环境
+  	env_pop_tf(&e->env_tf);
+  }
+  ```
+
+下面是在调用用户代码之前的代码调用图, 确保你理解每一步的目的.
+
+- `start` (`kern/entry.S`)
+- `i386_init` (`kern/init.c`)
+  - `cons_init`
+  - `mem_init`
+  - `env_init`
+  - `trap_init`(目前还没实现)
+  - `env_create`
+  - `env_run`
+    - `env_pop_tf`
+
+完成之后, 编译内核并在 QEMU下运行它. 如果一切顺利, 系统会进入用户空间并执行 hello二进制文件, 直到它使用int 指令进行系统调用. 这时就会出现问题, 因为 JOS还没有设置硬件来允许从用户空间到内核空间的任何形式的转换. 当 CPU发现它没有被设置来处理这个系统调用中断时, 会生成一个一般保护异常, 发现它不能处理, 生成一个双重故障异常, 发现它也不能处理, 最后放弃所谓的 "triple fault". 通常, CPU会复位, 系统会重启. 
+
+我们将很快解决这个问题, 但现在我们可以使用调试器检查是否进入用户模式. 使用 `make qemu-gdb` 并在`env_pop_tf` 处设置断点, 这应该是实际进入用户模式之前命中的最后一个函数. 使用 `si` 单步运行, 处理器应该在 `iret`指令之后进入用户模式. 然后在用户环境的可执行文件中看到第一条指令, 即 `lib/entry.S` 中 `start` `label` 处的 `cmpl`指令. 现在使用 `b *0x…`在 `hello`中的 `sys_cputs()`中设置 `int $0x30`处的断点(参见 `obj/user/hello.asm` 找到用户空间地址). 这个 `int`是一个系统调用, 将一个字符显示到控制台. 如果你不能执行到 `int`, 说明你的地址空间设置或程序代码有问题. 
+
+完成代码后, 运行 make, make qemu, 出现了  "triple fault"
+
+```
+xxx:~/workspace/6.828_2018/lab$ make qemu
+...
+6828 decimal is 15254 octal!
+edata_2017 end addr: 0xf018c014, bss end_2017 addr: 0xf018eff4
+edata end addr: 0xf018e0e0, bss end addr: 0xf018efe0
+Physical memory: 131072K available, base = 640K, extended = 130432K
+nextfree: 0xf018f000, bss end addr: 0xf018efe0
+nextfree: 0xf0190000
+mem_init() kern_pgdir: 0xf018f000, kern_pgdir addr: 0xf018efec
+mem_init() kern_pgdir[0]: 0, kern_pgdir[1]: 0, ...kern_pgdir[PGSIZE-1]: 0
+mem_init() UVPT: 0xef400000, PDX(UVPT): 0x3bd, kern_pgdir[PDX(UVPT)] physical addr: 0x0018f000
+nextfree: 0xf01d0000
+nextfree: 0xf01d1000
+check_page_free_list() succeeded!
+check_page_alloc() succeeded!
+check_page() succeeded!
+mem_init() map envs to virtual address:UENVS, PTSIZE:4194304, ROUNDUP:98304
+check_kern_pgdir() succeeded!
+check_page_free_list() succeeded!
+check_page_installed_pgdir() succeeded!
+env_init() done!
+e->env_pgdir:0xf03bc000
+[00000000] new env 00001000
+env_create() done before load_icode()
+ph:0xf011b364, end_ph:0xf011b3e4
+load_icVNC server running on `127.0.0.1:5900'
+6828 decimal is 15254 octal!
+edata_2017 end addr: 0xf018c014, bss end_2017 addr: 0xf018eff4
+edata end addr: 0xf018e0e0, bss end addr: 0xf018efe0
+Physical memory: 131072K available, base = 640K, extended = 130432K
+nextfree: 0xf018f000, bss end addr: 0xf018efe0
+nextfree: 0xf0190000
+mem_init() kern_pgdir: 0xf018f000, kern_pgdir addr: 0xf018efec
+mem_init() kern_pgdir[0]: 0, kern_pgdir[1]: 0, ...kern_pgdir[PGSIZE-1]: 0
+mem_init() UVPT: 0xef400000, PDX(UVPT): 0x3bd, kern_pgdir[PDX(UVPT)] physical addr: 0x0018f000
+nextfree: 0xf01d0000
+nextfree: 0xf01d1000
+check_page_free_list() succeeded!
+check_page_alloc() succeeded!
+check_page() succeeded!
+mem_init() map envs to virtual address:UENVS, PTSIZE:4194304, ROUNDUP:98304
+check_kern_pgdir() succeeded!
+check_page_free_list() succeeded!
+check_page_installed_pgdir() succeeded!
+env_init() done!
+e->env_pgdir:0xf03bc000
+[00000000] new env 00001000
+env_create() done before load_icode()
+ph:0xf011b364, end_ph:0xf011b3e4
+load_icode() done!
+env_run() start...
+EAX=00000000 EBX=00000000 ECX=0000000d EDX=eebfde88
+ESI=00000000 EDI=00000000 EBP=eebfde60 ESP=eebfde54
+EIP=00800b44 EFL=00000092 [--S-A--] CPL=3 II=0 A20=1 SMM=0 HLT=0
+ES =0023 00000000 ffffffff 00cff300 DPL=3 DS   [-WA]
+CS =001b 00000000 ffffffff 00cffa00 DPL=3 CS32 [-R-]
+SS =0023 00000000 ffffffff 00cff300 DPL=3 DS   [-WA]
+DS =0023 00000000 ffffffff 00cff300 DPL=3 DS   [-WA]
+FS =0023 00000000 ffffffff 00cff300 DPL=3 DS   [-WA]
+GS =0023 00000000 ffffffff 00cff300 DPL=3 DS   [-WA]
+LDT=0000 00000000 00000000 00008200 DPL=0 LDT
+TR =0028 f018eb60 00000067 00408900 DPL=0 TSS32-avl
+GDT=     f011b300 0000002f
+IDT=     f018e340 000007ff
+CR0=80050033 CR2=00000000 CR3=003bc000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+EFER=0000000000000000
+Triple fault.  Halting for inspection via QEMU monitor.
+```
+
+
+
 ## 参考
+
+https://pdos.csail.mit.edu/6.828/2017/labs/lab3/
 
 https://zhuanlan.zhihu.com/p/74028717
 
