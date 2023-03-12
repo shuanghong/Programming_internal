@@ -163,7 +163,7 @@ will panic with the message "env_alloc: out of memory".
   {
   	// Set up envs array
   	// LAB 3: Your code here.
-  	for(int i = NENV-1; i >= 0; i++)
+  	for(int i = NENV-1; i >= 0; i--)
   	{
   		envs[i].env_id = 0;
   		envs[i].env_status = ENV_FREE;
@@ -180,7 +180,7 @@ will panic with the message "env_alloc: out of memory".
 
   为新环境分配一个页目录(每个环境/进程都有一个自己的 page directory), 并初始化新环境地址空间的内核部分.
 
-  只设置页目录表中和操作系统内核跟内核相关的页目录项, 用户环境的页目录项不需要设置, 因为所有用户环境的页目录表中和操作系统相关的页目录项都是一样的(除了虚拟地址 UVPT, 这个也会单独进行设置)
+  只设置页目录表中和操作系统内核相关的页目录项, 用户环境的页目录项不需要设置, 因为所有用户环境的页目录表中和操作系统相关的页目录项都是一样的(除了虚拟地址 UVPT, 这个也会单独进行设置)
 
   ```
   static int
@@ -247,7 +247,7 @@ will panic with the message "env_alloc: out of memory".
 
 - region_alloc()
 
-  为环境分配和映射物理内存. 分配即分配物理页, 使用的是page_alloc(); 映射即安装到页目录和页表中.
+  为环境分配和映射物理内存. 分配即分配物理页, 使用的是 page_alloc(); 映射即安装到页目录和页表中.
 
   注意要先把起始地址和终止地址进行页对齐, 对其之后我们就可以以页为单位, 为其一页一页的分配内存, 并且修改页目录表和页表
 
@@ -396,7 +396,7 @@ will panic with the message "env_alloc: out of memory".
 
 - env_run()
 
-  启动一个给定的环境并以用户模式运行.
+  启动一个给定的环境并以用户模式运行(上下文切换, context switch).
 
   ```
   void
@@ -448,7 +448,11 @@ will panic with the message "env_alloc: out of memory".
 
 完成之后, 编译内核并在 QEMU下运行它. 如果一切顺利, 系统会进入用户空间并执行 hello二进制文件, 直到它使用int 指令进行系统调用. 这时就会出现问题, 因为 JOS还没有设置硬件来允许从用户空间到内核空间的任何形式的转换. 当 CPU发现它没有被设置来处理这个系统调用中断时, 会生成一个一般保护异常, 发现它不能处理, 生成一个双重故障异常, 发现它也不能处理, 最后放弃所谓的 "triple fault". 通常, CPU会复位, 系统会重启. 
 
-我们将很快解决这个问题, 但现在我们可以使用调试器检查是否进入用户模式. 使用 `make qemu-gdb` 并在`env_pop_tf` 处设置断点, 这应该是实际进入用户模式之前命中的最后一个函数. 使用 `si` 单步运行, 处理器应该在 `iret`指令之后进入用户模式. 然后在用户环境的可执行文件中看到第一条指令, 即 `lib/entry.S` 中 `start` `label` 处的 `cmpl`指令. 现在使用 `b *0x…`在 `hello`中的 `sys_cputs()`中设置 `int $0x30`处的断点(参见 `obj/user/hello.asm` 找到用户空间地址). 这个 `int`是一个系统调用, 将一个字符显示到控制台. 如果你不能执行到 `int`, 说明你的地址空间设置或程序代码有问题. 
+我们将很快解决这个问题, 但现在我们可以使用调试器检查是否进入用户模式. 使用 `make qemu-gdb` 并在`env_pop_tf` 处设置断点, 这应该是实际进入用户模式之前命中的最后一个函数. 
+
+使用 `si` 单步运行, 处理器应该在 `iret`指令之后进入用户模式. 然后在用户环境的可执行文件中看到第一条指令, 即 `lib/entry.S` 中 `start` `label` 处的 `cmpl`指令. 
+
+现在使用 `b *0x…`在 `hello`中的 `sys_cputs()`中设置 `int $0x30`处的断点(参见 `obj/user/hello.asm` 找到用户空间地址). 这个 `int`是一个系统调用, 将一个字符显示到控制台. 如果你不能执行到 `int`, 说明你的地址空间设置或程序代码有问题. 
 
 完成代码后, 运行 make, make qemu, 出现了  "triple fault"
 
@@ -524,6 +528,90 @@ EFER=0000000000000000
 Triple fault.  Halting for inspection via QEMU monitor.
 ```
 
+调试:
+
+1. 在一个 terminal 运行 make qemu-gdb, 另一个 terminal 运行 make gdb
+
+2. 在`env_pop_tf`设置断点, 这是进入用户模式之前的最后一个函数, 运行到此函数
+
+   <img src="images/env_pop_tf.png" alt="env_pop_tf" style="zoom:67%;" />
+
+3.  `si` 单步运行, 在 `iret`指令之后进入用户模式. 在用户环境的可执行文件中看到第一条指令, 即 `lib/entry.S` 中 `start` `label` 处的 `cmpl`指令. 
+
+   <img src="images/iret.png" alt="iret" style="zoom:50%;" />
+
+4. 查看 obj/user/hello.asm, 在 sys_cputs int $0x30 设断点, int指令是一个系统调用.
+
+   由于系统调用还没有实现, 这里继续往下执行就会触发 triple fault(下图中的 3)
+
+   <img src="images/sys_cputs.png" alt="sys_cputs" style="zoom:50%;" />
+
+   <img src="images/Triple_fault.png" alt="Triple_fault" style="zoom:50%;" />
+
+### env_pop_tf
+
+env_pop_tf() 在 env_run() 中最后调用, 是进入用户模式之前的最后一个函数.
+其实就是将栈指针 esp指向该环境(进程)的 env_tf, 将 env_tf 中存储的寄存器的值弹出到对应寄存器中, 然后通过 iret 指令弹出栈中的元素分别到 EIP, CS, EFLAGS 对应寄存器, 并跳转到 `CS:EIP` 存储的地址执行.
+当使用 iret指令返回到一个不同特权级运行时, 还会弹出堆栈段选择子及堆栈指针分别到 SS与 SP寄存器, 这样相关寄存器都从内核设置成了用户程序对应的值, EIP存储的是程序入口地址.
+
+```
+void
+env_pop_tf(struct Trapframe *tf)
+{
+	asm volatile(
+		"\tmovl %0,%%esp\n"	//	esp指向tf结构，弹出时会弹到tf里
+		"\tpopal\n"			//  弹出tf_regs中值到各通用寄存器
+		"\tpopl %%es\n"		//  弹出tf_es 到 es寄存器
+		"\tpopl %%ds\n"		//  弹出tf_ds 到 ds寄存器
+		"\taddl $0x8,%%esp\n"   //  跳过tf_trapno和tf_err
+		"\tiret\n"			//  中断返回 弹出tf_eip,tf_cs,tf_eflags,tf_esp,tf_ss到相应寄存器
+		: : "g" (tf) : "memory");
+	panic("iret failed");  /* mostly to placate the compiler */
+}
+
+struct PushRegs {
+        /* registers as pushed by pusha */
+        uint32_t reg_edi;
+        uint32_t reg_esi;
+        uint32_t reg_ebp;
+        uint32_t reg_oesp;              /* Useless */
+        uint32_t reg_ebx;
+        uint32_t reg_edx;
+        uint32_t reg_ecx;
+        uint32_t reg_eax;
+} __attribute__((packed));
+
+struct Trapframe {
+        struct PushRegs tf_regs;
+        uint16_t tf_es;
+        uint16_t tf_padding1;
+        uint16_t tf_ds;
+        uint16_t tf_padding2;
+        uint32_t tf_trapno;
+        /* below here defined by x86 hardware */
+        uint32_t tf_err;
+        uintptr_t tf_eip;
+        uint16_t tf_cs;
+        uint16_t tf_padding3;
+        uint32_t tf_eflags;
+        /* below here only when crossing rings, such as from user to kernel */
+        uintptr_t tf_esp;
+        uint16_t tf_ss;
+        uint16_t tf_padding4;
+} __attribute__((packed));
+                              
+```
+
+#### Trapframe
+
+Trapframe 存储的是当前环境(进程)的寄存器的值, `env_pop_tf`中便是将 trapframe的起始地址赋值给 esp, 然后用的这个顺序将栈中元素弹出到对应寄存器中的. 其中 popal是弹出 tf_regs到所有的通用寄存器中, 接着弹出值到 es, ds寄存器, 接着跳过 trapno和 errcode, 调用 iret分别将栈中存储数据弹出到 EIP, CS, EFLAGS寄存器中.
+
+### User <-> Kernel
+
+用户栈和内核栈的切换, 这个过程 ss, sp, eflags, cs, eip 在中断发生时由处理器压入, 通用寄存器部分则需要自己实现.
+
+ <img src="images/user_kernel_switch.png" alt="user_kernel_switch" style="zoom:50%;" />
+
 
 
 ## 参考
@@ -539,3 +627,6 @@ https://www.cnblogs.com/oasisyang/p/15520180.html
 https://111qqz.com/2019/03/mit-6-828-lab-3-user-environments/
 
 https://www.cnblogs.com/fatsheep9146/p/5341836.html
+
+[mit6.828-lab3 用户环境 - 简书 (jianshu.com)](https://www.jianshu.com/p/3d3d79abd5d1)
+
