@@ -4,7 +4,7 @@
 
 在本 lab中, 你将实现基本的内核功能, 以使受保护的用户模式环境(即“进程”)运行. 你将增强 JOS内核, 设置数据结构来跟踪用户环境, 创建单个用户环境, 将程序映像加载到其中并启动它. 还将使 JOS内核能够处理用户环境发出的任何系统调用(system calls)和处理它引起的任何其他异常(exceptions handling).
 
-注: 本 lab中环境 "environments"是进程 "process"的同义词. 两者都是指 "允许你运行程序的抽象“. 我们引入术语“环境”而不是传统的术语“进程”, 是为了强调 JOS环境和 UNIX进程提供不同的接口, 并且不提供相同的语义.
+注: 本 lab中环境 "environments"是进程 "process"的同义词. 两者都是指 "允许你运行程序的抽象“. 我们引入术语“环境”而不是传统的术语“进程”, 是为了强调 JOS环境和 UNIX进程提供不同的接口, 并且提供不同的语义.
 
 ### Getting Started
 
@@ -628,5 +628,7 @@ https://111qqz.com/2019/03/mit-6-828-lab-3-user-environments/
 
 https://www.cnblogs.com/fatsheep9146/p/5341836.html
 
-[mit6.828-lab3 用户环境 - 简书 (jianshu.com)](https://www.jianshu.com/p/3d3d79abd5d1)
+https://github.com/shishujuan/mit6.828-2017/blob/master/docs/lab3.md
+
+https://github.com/shishujuan/mit6.828-2017/blob/master/docs/lab3-exercize.md
 
