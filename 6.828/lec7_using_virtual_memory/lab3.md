@@ -1,5 +1,25 @@
 # Lab 3: User Environments(Process)
 
+## 预习准备
+
+lab3A-elf.md
+
+给操作系统捋条线.pdf
+
+### ELF 文件结构
+
+### LEF 加载
+
+### XV6 进程
+
+#### 进程控制块
+
+#### 进程运行状态
+
+#### 任务状态段
+
+#### 进程切换
+
 ## Introduction
 
 在本 lab中, 你将实现基本的内核功能, 以使受保护的用户模式环境(即“进程”)运行. 你将增强 JOS内核, 设置数据结构来跟踪用户环境, 创建单个用户环境, 将程序映像加载到其中并启动它. 还将使 JOS内核能够处理用户环境发出的任何系统调用(system calls)和处理它引起的任何其他异常(exceptions handling).
@@ -616,7 +636,7 @@ Trapframe 存储的是当前环境(进程)的寄存器的值, `env_pop_tf`中便
 
 ## 参考
 
-https://pdos.csail.mit.edu/6.828/2017/labs/lab3/
+https://pdos.csail.mit.edu/6.828/2018/labs/lab3/
 
 https://zhuanlan.zhihu.com/p/74028717
 

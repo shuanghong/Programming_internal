@@ -189,3 +189,37 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   CONTENTS, READONLY
 ```
 
+## MIT6.828-2018
+
+自 ubuntu18.04(x86_64) 开始, 使用 2018 lab1.
+
+schedule:
+
+https://pdos.csail.mit.edu/6.828/2018/schedule.html
+
+在做 JOS lab之前, 都要学习该 lab的相关资料(**Preparation**:), 而参考资料都在对应 lab之后的课程中, 以 lab3为例, lab3 出现在 LEC7中,  其学习参考资料在 LEC8, LEC9 中, 一直到 **DUE**: Lab 3 (Part A), **DUE**: Lab 3 (Part B).
+
+## XV6-reference
+
+JOS lab 基于 XV6, 学习资料都是阅读 XV6相关章节.
+
+1. xv6-chinese: https://github.com/ranxian/xv6-chinese/tree/rev8
+
+   这里取的是 rev8 分支, chapter1: 操作系统组织架构
+
+2. https://zhuanlan.zhihu.com/p/166413604
+
+<img src="xv6_docs/images/xv6_reference0.PNG" alt="xv6_reference0" style="zoom:50%;" />
+
+​	repo: AnBlogs/6.828, https://github.com/Anarion-zuo/AnBlogs/tree/master/6.828
+
+3. 给操作系统捋条线, https://zhuanlan.zhihu.com/p/438838399
+
+   repo: https://github.com/Rand312/xv6
+
+4. repo: https://github.com/pleasewhy/xv6-book-2020-Chinese
+
+
+
+
+
