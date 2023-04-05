@@ -8,11 +8,114 @@ lab3A-elf.md
 
 ### ELF 文件结构
 
-### LEF 加载
+```
+struct Elf {
+	uint32_t e_magic;	// must equal ELF_MAGIC
+	uint8_t e_elf[12];
+	uint16_t e_type;
+	uint16_t e_machine;
+	uint32_t e_version;
+	uint32_t e_entry;
+	uint32_t e_phoff;
+	uint32_t e_shoff;
+	uint32_t e_flags;
+	uint16_t e_ehsize;
+	uint16_t e_phentsize;
+	uint16_t e_phnum;
+	uint16_t e_shentsize;
+	uint16_t e_shnum;
+	uint16_t e_shstrndx;
+};
+```
 
-### XV6 进程
+ELF 文件开头放置的是一系列`header`，包括整个 ELF的`header`, 以及后面一个个区块的`header`，这些`header`不直接包含和运行有关的数据, 只包含**元数据**, 帮助我们更好加载真正的数据.
+
+ELF `header` 中指定了每个区块`segment`的位置, 以及`segment`的长度, 从而让我们方便地找到并索引.
+
+这些区块`segment`是编译器和连接器定义的, 每个都有各自的含义. 如`.text`为代码区, 包含要执行的指令; `.data`代表已经初始化的全局变量; `.bss`代表未初始化的全局变量, 等等. 要让进程正确执行, 必须把这些区块加载到正确的内存空间上.
+
+### ELF 文件加载
+
+该 Lab中并没有加载真的可执行文件, 因为还没有文件系统. 所使用的 ELF文件是通过链接器嵌入到内核这个可执行文件中的.
+
+ELF 文件有多个`ProgHdr`, 即可执行文件中的 segment(段), 每个  segment对应一个 program header, 每个 segment 都有指定好的虚拟地址和长度, 只需要从 `ELF`中读取出这些信息, 把数据拷贝到相应位置就可以. 下面是一个可执行文件的例子.
+
+```
+$ readelf -l stack
+
+Elf file type is EXEC (Executable file)
+Entry point 0x10318
+There are 8 program headers, starting at offset 52
+
+Program Headers:
+  Type           Offset   VirtAddr   PhysAddr   FileSiz MemSiz  Flg Align
+  EXIDX          0x000574 0x00010574 0x00010574 0x00008 0x00008 R   0x4
+  PHDR           0x000034 0x00010034 0x00010034 0x00100 0x00100 R E 0x4
+  INTERP         0x000134 0x00010134 0x00010134 0x00013 0x00013 R   0x1
+      [Requesting program interpreter: /lib/ld-linux.so.3]
+  LOAD           0x000000 0x00010000 0x00010000 0x00580 0x00580 R E 0x10000
+  LOAD           0x000580 0x00020580 0x00020580 0x00120 0x00124 RW  0x10000
+  DYNAMIC        0x00058c 0x0002058c 0x0002058c 0x000f0 0x000f0 RW  0x4
+  NOTE           0x000148 0x00010148 0x00010148 0x00044 0x00044 R   0x4
+  GNU_STACK      0x000000 0x00000000 0x00000000 0x00000 0x00000 RW  0x10
+```
+
+有内存空间才能执行指令, 在拷贝 ELF文件中的各个部分到指定位置之前, 需要通过已有的分配器给进程足够多的`page`, 用于存放 ELF文件镜像. 并且光是 ELF文件中的内容还不够, 进程执行还需要栈, 要给进程栈分配空间, 并映射到指定的虚拟地址.
+
+Exercise 2 中`load_icode()`函数的任务是把内核代码中的一个`ELF`镜像加载到指定的地址. 需要注意以下几点:
+
+-   加载之前首先验证`e_magic`是否正确
+-   在拷贝 program segment之前, 先将地址映射切换为当前进程的, 而不是继续使用内核的. `x86`可以非常方便地使用 lcr3()函数切换`Page Directory`.
+-   ELF 中的虚拟地址指的是用户地址空间, 而不是当前采用的内核地址空间, 需要把指定的用户地址空间换算为内核地址空间, 再进行拷贝.
+
+### XV6 进程管理
+
+Exercise 2 还涉及到了用户进程(环境)的创建及运行(进程切换), env_create(), env_run().
+
+进程 = 程序 + 运行时状态
+
+* 程序: 存储器上的一个可执行文件
+* 进程就是程序在内存中的一个执行实例, 即运行时的程序
 
 #### 进程控制块
+
+可执行文件由 ELF文件结构记录管理着文件的信息, 当可执行文件被加载到内存当作进程执行后, 也有类似的数据结构来记录管理进程的执行情况, 称为进程控制块(Process Control Block). PCB中记录了进程运行需要的一切环境和信息, xv6 的 PCB定义如下:
+
+```
+[proc.h]
+struct proc {
+	uint sz; 					// Size of process memory (bytes)进程大小
+	pde_t* pgdir; 				// Page table 页表
+	char *kstack; 				// Bottom of kernel stack for this process 内核栈位置
+	enum procstate state; 		// Process state 程序状态
+	int pid; 					// Process ID 进程ID
+	struct proc *parent; 		// Parent process 父进程指针
+	struct trapframe *tf; 		// Trap frame for current syscall 中断栈帧指针
+	struct context *context; 	// swtch() here to run process 上下文指针
+	void *chan; 				// If non-zero, sleeping on chan 用来睡眠
+	int killed; 				// If non-zero, have been killed 是否被killed
+	struct file *ofile[NOFILE]; // Open files 打开文件描述符表
+	struct inode *cwd; 			// Current directory 当前工作路径
+	char name[16]; 				// Process name (debugging) 进程名字
+}
+```
+
+每个进程对应一个进程控制块/结构体, xv6 最多支持 64个进程, 所有进程结构体集合在一起形成了进程结构体表, 创建进程的时候寻找空闲的结构体分配出去, 进程退出时再回收.
+
+```
+[param.h]
+#define NPROC 64 // maximum number of processes
+
+[proc.c]
+struct {
+	struct spinlock lock;
+	struct proc proc[NPROC];
+} ptable;
+```
+
+进程结构体表是一个全局的数据, 配了一把锁给它, 锁主要用来保护进程的状态和上下文.
+
+
 
 #### 进程运行状态
 
