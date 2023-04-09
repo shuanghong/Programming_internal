@@ -87,7 +87,7 @@ struct proc {
 	uint sz; 					// Size of process memory (bytes)进程大小
 	pde_t* pgdir; 				// Page table 页表
 	char *kstack; 				// Bottom of kernel stack for this process 内核栈位置
-	enum procstate state; 		// Process state 程序状态
+	enum procstate state; 		// Process state 进程状态
 	int pid; 					// Process ID 进程ID
 	struct proc *parent; 		// Parent process 父进程指针
 	struct trapframe *tf; 		// Trap frame for current syscall 中断栈帧指针
@@ -115,13 +115,50 @@ struct {
 
 进程结构体表是一个全局的数据, 配了一把锁给它, 锁主要用来保护进程的状态和上下文.
 
-
-
 #### 进程运行状态
 
-#### 任务状态段
+<img src="../xv6_docs/images/process_state.PNG" alt="process_state" style="zoom:80%;" />
+
+* UNUSED: 表示任务结构体未使用处于空闲状态, 当要创建进程的时候就可以将这个结构体分配出去 
+* EMBRYO: 任务结构体刚分配出去, 资源都还没分配给该进程, 处于萌芽状态 
+* RUNNABLE: 表示进程需要的一切准备就绪, 可以上 CPU执行了, 此时状态为 RUNNABLE
+* RUNNING: 表示该进程正在 CPU上执行, 如果时间片到了则让出 CPU变为 RUNNABLE状态; 如果运行过程中因为某些事件阻塞比如 IO, 也让出 CPU变为 SLEEPING状态
+* SLEEPING: 通常因为进程执行的过程中遇到某些事件阻塞比如 IO操作, 这时候等待 IO返回并让出 CPU使得进程进入 SLEEPING状态. 当 IO事件结束返回之后则恢复到 RUNNABLE状态, 表明又可以上 CPU执行了
+* ZOMBIE: 进程执行到最后调用 exit函数, 则状态变为 ZOMBIE, 这个状态一直持续到父进程调用 wait来回收子进程资源. 
+  如果子进程执行 exit之后, 父进程一直没有回收子进程, 那么这个子进程就一直处于僵尸状态, 也就是通常所说的僵尸进程. 
+  如果一个父进程退出, 而它的一个或多个子进程还在运行, 那么这些子进程将成为孤儿进程. 孤儿进程最后会被 init进程(第一个进程)收养, 并由 init进程对它们完成资源的回收工作
+
+#### CPU 结构体
+
+```
+[param.h]
+#define NCPU          8  // maximum number of CPUs
+
+[proc.h]
+// Per-CPU state
+struct cpu {
+  uchar apicid;                // LAPIC ID, 可以当作是 CPU ID
+  struct context *scheduler;   // 调度器的上下文
+  struct taskstate ts;         // 任务状态段
+  struct segdesc gdt[NSEGS];   // GDT
+  volatile uint started;       // CPU是否已经启动
+  int ncli;                    // 关中断深度
+  int intena;                  // 该CPU在pushcli之前是否允许中断
+  struct proc *proc;           // 运行在该CPU上的进程指针
+};
+
+[mp.c]
+struct cpu cpus[NCPU];
+```
+
+进程运行在 CPU上, xv6 也是个支持多处理器的操作系统, 最大支持 NCPU 个 CPU, 并且为每个 CPU维护了
+一个数据结构记录当前 CPU的信息.
+
+每个处理器有着自己的调度器 scheduler, CPU结构体中记录了调度器的上下文指针 `struct context *scheduler`. 调度器就是一段内核代码, 当需要调度的时候, 它来决定当前执行哪一个状态为 RUNNABLE 的进程，或者说为状态是 RUNNABLE 的进程分配 CPU
 
 #### 进程切换
+
+
 
 ## Introduction
 
