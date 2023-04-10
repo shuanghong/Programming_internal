@@ -2,9 +2,17 @@
 
 ## 预习准备
 
-lab3A-elf.md
+### 参考
 
-给操作系统捋条线.pdf
+给操作系统捋条线: https://github.com/Rand312/xv6
+
+https://github.com/Anarion-zuo/AnBlogs/tree/master/6.828, lab3A-elf.md
+
+https://github.com/ranxian/xv6-chinese/tree/rev8, rev8 分支, chapter3.md
+
+[xv6源码分析（五）：异常、中断、系统调用机制_argint argstr_elif的博客-CSDN博客](https://blog.csdn.net/qq_25426415/article/details/54647862)
+
+
 
 ### ELF 文件结构
 
@@ -158,7 +166,105 @@ struct cpu cpus[NCPU];
 
 #### 进程切换
 
+##### 中断上下文 trapframe
 
+当用户程序进入内核时(系统调用, 异常, 中断)需要保存当前进程的现场, 也就是将中断前一刻进程的所有寄存器压栈到内核栈, 这些寄存器加上一些其他信息比如向量号就形成中断上下文, 也叫中断栈帧.
+
+进程控制块 PCB中有中断栈帧的指针, xv6 trapframe 定义如下:
+
+```
+struct proc {
+	...
+	struct trapframe *tf; 		// Trap frame for current syscall 中断栈帧指针
+}
+
+[x86.h]
+// Layout of the trap frame built on the stack by the
+// hardware and by trapasm.S, and passed to trap().
+struct trapframe {
+  // registers as pushed by pusha
+  uint edi;
+  uint esi;
+  uint ebp;
+  uint oesp;      // useless & ignored
+  uint ebx;
+  uint edx;
+  uint ecx;
+  uint eax;
+
+  // rest of trap frame
+  ushort gs;
+  ushort padding1;
+  ushort fs;
+  ushort padding2;
+  ushort es;
+  ushort padding3;
+  ushort ds;
+  ushort padding4;
+  uint trapno;
+
+  // below here defined by x86 hardware
+  uint err;
+  uint eip;
+  ushort cs;
+  ushort padding5;
+  uint eflags;
+
+  // below here only when crossing rings, such as from user to kernel
+  uint esp;
+  ushort ss;
+  ushort padding6;
+};
+```
+
+Exercise 2 中 `env_run`函数中调用 `env_pop_tf`执行进程上下文切换, 其参数就是一个 trapframe结构.
+
+关于中断栈帧的详细介绍见后文"中断"部分.
+
+##### 上下文切换 context switch
+
+上下文切换主要用于进程的切换.
+
+* 每个进程都有用户部分和内核部分, 就算进入内核执行内核代码也还是在当前进程, 进程并没有切换
+* 进程切换一定是在内核中进行的, 不论是因为时间片到了还是因为某些 IO事情阻塞主动让出 CPU都是如此
+
+假设现在进程 A因为时间片到了要切换到进程 B, 因为时钟中断的发生, A会先保存它当前中断上下文到内核栈, 接下来就会执行切换进程的代码. 此时进入内核态, 保存 A内核部分的上下文, 从 A进程切换到调度程序, 调度程序根据调度算法选择出 B进程之后, 再切换到进程 B.
+
+进程切换实际上进行了两次切换操作, 有两次切换上下文保存与恢复. 并且不论是主动让出 CPU还是被动让出 CPU, 还会有一个中断上下文的保存与恢复, 所以进程切换也避免不了中断上下文的保存与恢复. 如下图所示.
+
+<img src="../xv6_docs/images/context_switch.PNG" alt="context_switch" style="zoom:67%;" />
+
+进程控制块 PCB中有上下文的指针, xv6 中 context 定义如下:
+
+```
+struct proc {
+	...
+	struct context *context; 	// swtch() here to run process 上下文指针
+}
+
+[proc.h]
+// Saved registers for kernel context switches.
+// Don't need to save all the segment registers (%cs, etc),
+// because they are constant across kernel contexts.
+// Don't need to save %eax, %ecx, %edx, because the
+// x86 convention is that the caller has saved them.
+// Contexts are stored at the bottom of the stack they
+// describe; the stack pointer is the address of the context.
+// The layout of the context matches the layout of the stack in swtch.S
+// at the "Switch stacks" comment. Switch doesn't save eip explicitly,
+// but it is on the stack and allocproc() manipulates it.
+struct context {
+  uint edi;
+  uint esi;
+  uint ebx;
+  uint ebp;
+  uint eip;
+};
+```
+
+为什么内核态的上下文切换只需要保存这么几个寄存器?
+
+进程切换就是切换函数的调用, 整个过程类似于 `A call scheduler`, `scheduler call B`. 根据 x86函数调用约定(参见 l-x86.pdf), eax, ecx, edx 为调用者保存寄存器, 不需要保存, 需要保存的是被调用者保存寄存器, 也就是上面那 5 个寄存器. 
 
 ## Introduction
 
@@ -402,9 +508,8 @@ will panic with the message "env_alloc: out of memory".
   
   	return 0;
   }
-  
   ```
-
+  
 - region_alloc()
 
   为环境分配和映射物理内存. 分配即分配物理页, 使用的是 page_alloc(); 映射即安装到页目录和页表中.
@@ -792,3 +897,6 @@ https://github.com/shishujuan/mit6.828-2017/blob/master/docs/lab3.md
 
 https://github.com/shishujuan/mit6.828-2017/blob/master/docs/lab3-exercize.md
 
+[【xv6学习之番外篇】详解struct Env 与 struct Trapframe_mick_seu的博客-CSDN博客](https://blog.csdn.net/woxiaohahaa/article/details/50564517)
+
+https://pdos.csail.mit.edu/6.828/2018/readings/ia32/
