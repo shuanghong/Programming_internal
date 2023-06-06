@@ -266,6 +266,10 @@ struct context {
 
 进程切换就是切换函数的调用, 整个过程类似于 `A call scheduler`, `scheduler call B`. 根据 x86函数调用约定(参见 l-x86.pdf), eax, ecx, edx 为调用者保存寄存器, 不需要保存, 需要保存的是被调用者保存寄存器, 也就是上面那 5 个寄存器. 
 
+### 陷入, 中断和驱动程序
+
+
+
 ## Introduction
 
 在本 lab中, 你将实现基本的内核功能, 以使受保护的用户模式环境(即“进程”)运行. 你将增强 JOS内核, 设置数据结构来跟踪用户环境, 创建单个用户环境, 将程序映像加载到其中并启动它. 还将使 JOS内核能够处理用户环境发出的任何系统调用(system calls)和处理它引起的任何其他异常(exceptions handling).
@@ -869,7 +873,7 @@ struct Trapframe {
 
 #### Trapframe
 
-Trapframe 存储的是当前环境(进程)的寄存器的值, `env_pop_tf`中便是将 trapframe的起始地址赋值给 esp, 然后用的这个顺序将栈中元素弹出到对应寄存器中的. 其中 popal是弹出 tf_regs到所有的通用寄存器中, 接着弹出值到 es, ds寄存器, 接着跳过 trapno和 errcode, 调用 iret分别将栈中存储数据弹出到 EIP, CS, EFLAGS寄存器中.
+Trapframe 存储的是当前环境(进程)的寄存器的值, `env_pop_tf`中便是将 trapframe的起始地址赋值给 esp, 然后用的这个顺序将栈中元素弹出到对应寄存器中的. 其中 popal 是弹出 tf_regs到所有的通用寄存器中, 接着弹出值到 es, ds寄存器, 接着跳过 trapno 和 errcode, 调用 iret 分别将栈中存储数据弹出到 EIP, CS, EFLAGS寄存器中.
 
 ### User <-> Kernel
 
@@ -879,9 +883,367 @@ Trapframe 存储的是当前环境(进程)的寄存器的值, `env_pop_tf`中便
 
 
 
+### Handling Interrupts and Exceptions
+
+到目前为止, 当程序运行到第一个系统调用 int $0x30 时, 就会进入错误的状态, 因为现在系统无法从用户态切换到内核态. 所以你需要实现一个基本的异常/系统调用处理机制, 使得内核可以从用户态转换为内核态. 你应该先熟悉一下 X86的异常中断机制.
+
+### Exercise 3
+
+阅读 [80386 Programmer's Manual](https://pdos.csail.mit.edu/6.828/2018/readings/i386/toc.htm) 的 [Chapter 9, Exceptions and Interrupts](https://pdos.csail.mit.edu/6.828/2018/readings/i386/c09.htm) 或者  [IA-32 Developer's Manual](https://pdos.csail.mit.edu/6.828/2018/readings/ia32/IA32-3A.pdf) Chapter5
+
+在本 Lab中,我们通常遵循英特尔关于中断、异常等的术语. 然而诸如 exception, trap, interrupt, fault and abort(异常、陷入、中断、故障和中止) 等术语在架构或操作系统中没有标准含义, 并且在使用时通常不考虑它们在特定架构(如x86)上的细微区别. 当你在 Lab之外看到这些术语时, 含义可能会略有不同.
+
+### Basics of Protected Control Transfer
+
+异常(Exception)和中断(Interrupts)都是“受到保护的控制转移”, 都会使处理器从用户态转移为内核态. 在 Intel的术语中, 一个中断指的是由外部异步事件引起的处理器控制权转移, 比如外部 IO设备发送来的中断信号. 一个异常则是由于当前正在运行的指令所带来的同步的处理器控制权的转移, 比如除零溢出异常, 无效的内存访问.
+
+根据异常被报告的方式以及导致异常的指令是否能重新执行, 异常还可以细分为故障(Fault), 陷入(Trap)和中止(Abort).
+
+* Fault 是通常可以被纠正的异常, 纠正后可以继续运行. 出现 Fault时处理器会把机器状态恢复到产生 Fault指令之前的状态, 此时异常处理程序返回地址会指向产生 Fault的指令, 而不是下一条指令, 产生 Fault的指令在中断处理程序返回后会重新执行, 如 Page Fault.
+* Trap 处理程序返回后执行的指令是引起陷阱指令的后一条指令
+* Abort 则不允许异常指令继续执行
+
+为了能够确保这些控制的转移能够真正被保护起来, 处理器的中断/异常机制通常被设计为: 用户态的代码无权选择内核中的代码从哪里开始执行. 处理器可以确保只有在某些条件下, 才能进入内核态. 在 X86上有两种机制配合工作来提供这种保护:
+
+1. 中断向量表:
+
+   处理器保证中断和异常只能够引起内核进入到一些特定的, 被事先定义好的程序入口点, 而不是由触发中断的程序来决定中断程序入口点.
+
+   X86允许多达256个不同的中断和异常, 每一个都配备一个独一无二的中断向量. 一个向量指的就是0到255中的一个数, 一个中断向量的值是根据中断源来决定的: 不同设备, 错误条件, 以及对内核的请求都会产生出不同的中断和中断向量的组合. CPU将使用这个向量作为这个中断在中断向量表中的索引, 这个表由内核设置的, 放在内核空间中, 和 GDT很像, 通过这个表中的任意一个表项, 处理器可以知道:
+
+   * 需要加载到 EIP寄存器中的值, 这个值指向了处理这个中断的中断处理程序的位置
+   * 需要加载到 CS寄存器中的值, 里面还包含了这个中断处理程序的运行特权级(程序是在用户态还是内核态下运行)
+
+2. 任务状态段
+
+   处理器还需要一个地方来存放, 当异常/中断发生时处理器的状态, 比如 EIP和 CS寄存器的值. 这样的话中断处理程序一会可以重新返回到原来的程序中, 这段内存自然也要保护起来, 不能被用户态的程序所篡改.
+
+   正因为如此, 当一个 x86处理器要处理一个中断/异常并且使运行特权级从用户态转为内核态时, 它也会把它的堆栈切换到内核空间中. 一个叫做 “任务状态段(TSS)”的数据结构将会详细记录这个堆栈所在的段的段描述符和地址. 处理器会把 SS, ESP, EFLAGS, CS, EIP以及一个可选错误码等等这些值压入到这个堆栈上, 然后加载中断处理程序的 CS, EIP值, 并且设置 ESP, SS寄存器指向新的堆栈.
+
+   尽管 TSS非常大, 并且还有很多其他的功能, 但 JOS仅仅使用它来定义处理器从用户态转向内核态所采用的内核堆栈, 由于 JOS中的内核态指的就是特权级 0, 所以处理器用 TSS中的 ESP0, SS0字段来指明这个内核堆栈的位置, 大小.
+
+### Types of Exceptions and Interrupts
+
+由 x86处理器内部产生的所有同步异常都使用 0到 31之间的中断向量, 映射到 IDT条目的 0-31. 比如页错误(page fault) 对应的异常向量值 14. 大于 31的中断向量仅用于软件中断, 它可以由`int`指令产生, 或者外部设备在需要注意时引起的异步硬件中断.
+
+ 在这一章, 我们将扩展 JOS的功能, 使它能够处理 0~31的内部异常. 在下一节会让 JOS能够处理软件中断向量 48(0x30),  JOS(相当随意地)将其用作系统调用中断向量. 在 Lab4中会继续扩展 JOS使它能够处理外部硬件中断, 比如时钟中断.
+
+### An Example
+
+让我们看一个实例, 假设处理器正在用户状态下运行代码, 但是遇到了一个除法指令, 并且除数为 0.
+
+1. 处理器会首先切换切换到由 TSS的 `SS0` 和 `ESP0`字段所指定的内核堆栈区, 这两个字段分别存放着 GD_KD和 KSTACKTOP的值.
+
+2. 处理器把异常参数压入到内核堆栈中, 起始于地址 KSTACKTOP：
+
+   <img src="images/exception_example_1.PNG" alt="exception_example_1" style="zoom: 67%;" />
+
+3. 因为我们要处理的是除零异常, 对应 x86的中断向量是 0, 处理器会读取 IDT表中的表项 0, 并且把 `CS:EIP` 指向由条目描述的处理程序函数.
+4. 处理函数获取控制权并处理异常, 例如终止用户环境(进程).
+
+对于某些特定类型的 x86异常, 除了上面图中要保存的五个字(word)之外, 处理器将另一个包含错误码的字压入堆栈. 比如 page fault 异常是一个重要的例子, 请参考 80386手册, 以确定处理器为哪个异常编号压入错误代码, 以及在这种情况下错误代码的含义. 当处理器压入错误代码时, 从用户模式进入异常处理程序时, 堆栈看起来如下所示:
+
+​		<img src="images/exception_example_2.PNG" alt="exception_example_2" style="zoom:67%;" />
+
+### Nested Exceptions and Interrupts
+
+嵌套异常和中断.
+
+来自用户态和内核态下的异常或中断处理器都可以处理, 但是只有从用户态进入到内核态时, x86处理器从才会自动地切换堆栈, 然后将旧的寄存器状态压入到堆栈上, 并通过 IDT调用适当的异常处理程序. 如果处理器在中断或异常发生时已经处于内核模式 (CS寄存器的低 2位已经为零)，那么 CPU只是在相同的内核堆栈上压入更多的值. 通过这种方式, 内核可以优雅地处理由内核内部代码引起的嵌套异常. 这个功能是实现保护的重要工具, 我们将在后面关于系统调用的部分中看到.
+
+如果处理器已经处于内核模式并且遇到嵌套中断, 因为它不需要切换堆栈, 所以它不需要保存旧的 `SS` 和 `ESP` 寄存器, 对于不压入错误代码的异常类型, 在异常处理程序入口时的内核堆栈看起来如下:
+
+<img src="images/exception_nested.PNG" alt="exception_nested" style="zoom:67%;" />
+
+对于压入错误代码的异常类型, 处理器将像之前一样, 在旧 `EIP` 之后立即压入错误代码.
+
+对于处理器的嵌套异常功能, 有一个重要的警告. 如果处理器在已经处于内核模式时发生异常, 并且由于缺乏堆栈空间等原因无法将其旧状态推入内核堆栈, 则处理器无法恢复, 只能简单地重置, 内核的设计应该使这种情况不会发生.
+
+### Setting Up the IDT
+
+你应该拥有了设置 IDT和处理 JOS异常所需的基本信息. 现在你将设置 IDT来处理中断向量 0-31(处理器异常). 我们将在稍后的实验中处理系统调用中断, 并在稍后的实验中添加中断 32-47(device IRQs).
+
+头文件 `inc/trap.h` 和 `kern/trap.h` 包含与中断和异常相关的重要定义, 需要熟悉这些定义. `kern/trap.h` 包含对内核严格私有的定义, 而 `inc/trap.h` 包含对用户级程序和库可能有用的定义.
+
+注意: 0-31范围内的一些异常被 Intel定义为保留, 因为它们永远不会由处理器生成, 所以如何处理它们并不重要, 做你认为最干净的事.
+
+应该实现的总体控制流程如下所示:
+
+<img src="images/IDT_setting.PNG" alt="IDT_setting" style="zoom: 67%;" />
+
+在 `trapentry.S`中每个异常或中断都应该有自己的处理程序, `trap_init()`应该用这些处理程序的地址初始化 IDT. 每个处理程序都应该在堆栈上构建一个 `struct  Trapframe` (参见 `inc/trap.h`), 并使用指向 `Trapframe` 的指针调用 `trap()` (在 trap.c 中), 然后 `trap()` 处理异常/中断或发送到特定的处理函数.
+
+### Exercise 4
+
+编辑 `trapentry.S` 和 `trap.c` 文件, 并且实现上面所说的功能. `trapentry.S` 中的宏定义 `TRAPHANDLER` 和 `TRAPHANDLER_NOEC` 以及 `inc/trap.h`中的 T_* 会对你有帮助. 你将会在 `trapentry.S` 文件中为在 `inc/trap.h` 中的每一个 `trap` 添加一个入口, 并且必须提供 `TRAPHANDLER` 宏所引用的 _alltraps. 还需要修改 `trap_init()` 函数来初始化 idt 表, 使表中每一项指向定义在 `trapentry.S` 中的入口指针, `SETGATE` 宏定义在这里用得上.
+
+你所实现的 _alltraps 应该:
+
+1. 把值压入堆栈使堆栈看起来像一个 struct Trapframe
+
+2. 加载 GD_KD 的值到 %ds, %es寄存器中
+
+3. 把 %esp 的值压入, 并且传递一个指向 Trapframe 的指针作为 trap() 参数
+
+4. 调用 trap
+
+考虑使用 `pushal` 指令, 它会很好的和 struct Trapframe 的布局配合好.
+
+在进行任何系统调用之前, 使用用户目录中导致异常的一些测试程序测试 trap 处理代码, 比如 user/divzero. 你应该使得  **make grade** 在 divzero, softint, badsegment 测试中通过.
+
+首先看 `trapentry.S` , 有两个宏定义 `TRAPHANDLER` , `TRAPHANDLER_NOEC` 
+
+根据注释, `TRAPHANDLER`定义了一个全局可见的函数来处理 trap, 将 trap number 压入堆栈, 然后跳转到 _alltraps.  
+
+对于 CPU自动压入 error code 的使用 `TRAPHANDLER`; 对于不压入error code 的使用`TRAPHANDLER_NOEC`
+
+```
+#define TRAPHANDLER(name, num)						\
+	.globl name;		/* define global symbol for 'name' */	\
+	.type name, @function;	/* symbol type is function */		\
+	.align 2;		/* align function definition */		\
+	name:			/* function starts here */		\
+	pushl $(num);							\
+	jmp _alltraps
+
+#define TRAPHANDLER_NOEC(name, num)					\
+	.globl name;							\
+	.type name, @function;						\
+	.align 2;							\
+	name:								\
+	pushl $0;							\
+	pushl $(num);							\
+	jmp _alltraps
+	
+==================================================
+.globl name; 指定 name 是个全局符号
+.type name, @function; 指定 name 是个函数
+pushl $0;	压入 0占位 error code
+pushl $(num); 压入 trap number
+```
+
+ `trapentry.S` 中的第一部分代码实现如下:
+
+```
+/*
+ * Lab 3: Your code here for generating entry points for the different traps.
+ */
+
+// divide_handler 是处理函数, T_DIVIDE是 inc/trap.h中定义的中断向量号(trap number)
+TRAPHANDLER_NOEC(divide_handler, T_DIVIDE)		
+TRAPHANDLER_NOEC(debug_handler, T_DEBUG)
+TRAPHANDLER_NOEC(nmi_handler, T_NMI)
+TRAPHANDLER_NOEC(brkpt_handler, T_BRKPT)
+TRAPHANDLER_NOEC(oflow_handler, T_OFLOW)
+TRAPHANDLER_NOEC(bound_handler, T_BOUND)
+
+TRAPHANDLER_NOEC(illop_handler, T_ILLOP)
+TRAPHANDLER(device_handler, T_DEVICE)
+TRAPHANDLER_NOEC(dblflt_handler, T_DBLFLT)
+TRAPHANDLER(tss_handler, T_TSS)
+
+TRAPHANDLER(segnp_handler, T_SEGNP)
+TRAPHANDLER(stack_handler, T_STACK)
+TRAPHANDLER(gpflt_handler, T_GPFLT)
+TRAPHANDLER(pgflt_handler, T_PGFLT)
+
+TRAPHANDLER_NOEC(fperr_handler, T_FPERR)
+TRAPHANDLER(align_handler, T_ALIGN)
+TRAPHANDLER_NOEC(mchk_handler, T_MCHK)
+TRAPHANDLER_NOEC(simderr_handler, T_SIMDERR)
+
+TRAPHANDLER_NOEC(syscall_handler, T_SYSCALL)
+```
+
+ `trapentry.S` 中的第二部分代码 _alltraps.
+
+```
+_alltraps:
+	pushl %ds
+	pushl %es
+	pushal
+   	
+   	#load GD_KD into %ds, %es.段寄存器ds,es在mov指令中不支持立即数, 使用ax寄存器中转数据
+    movw $(GD_KD), %ax
+    movw %ax, %ds
+    movw %ax, %es
+    
+    # pass a pointer to the trap frame for function trap
+    pushl %esp
+    call trap /*never return*/    
+```
+
+根据前面的提示 1, 堆栈看起来像一个 struct Trapframe. 参数压栈顺序是从右往左, 对应 struct Trapframe 就是就是从下往上. 
+
+* tf_ss 和 tf_esp: SS, ESP, 只用在发生特权级变化的时候才会有(从用户态进入内核模式), 由硬件处理器自动压栈
+* tf_eflags, tf_cs, tf_eip: EFLAGS, CS, EIP 也是硬件自动压栈, tf_err(error code)可选, 对于 `TRAPHANDLER`则由硬件入栈, 所以`TRAPHANDLER`首先就是压栈 tf_trapno, `TRAPHANDLER_NOEC` 则是先压入占位 0(), 再压入 trap num.
+* _alltraps 第一步压入 %ds, %es, 对应 tf_ds, tf_es. 
+* _alltraps 紧接着加载 GD_KD 的值到 %ds, %es寄存器中(提示 2)
+* pushl %esp, 将当前栈指针压栈, 相当于给 `trap`函数传参. `kern/trap.c`中的`trap`函数中接受的参数 `tf`就是这样传进来, 相当于传递了一个 struct Trapframe.
+
+```
+struct Trapframe {
+	struct PushRegs tf_regs;
+	uint16_t tf_es;
+	uint16_t tf_padding1;
+	uint16_t tf_ds;
+	uint16_t tf_padding2;
+	uint32_t tf_trapno;
+	/* below here defined by x86 hardware */
+	uint32_t tf_err;
+	uintptr_t tf_eip;
+	uint16_t tf_cs;
+	uint16_t tf_padding3;
+	uint32_t tf_eflags;
+	/* below here only when crossing rings, such as from user to kernel */
+	uintptr_t tf_esp;
+	uint16_t tf_ss;
+	uint16_t tf_padding4;
+} __attribute__((packed));
+```
+
+以上, 则在内核栈中构造了 struct Trapframe, 执行 `trap(struct Trapframe *tf)` 时, tf 指向内核栈, 而栈中内容正好是一个完整的 struct Trapframe.
+
+再看 `trap.c` 中的 `trap_init()` 函数, 其用来初始化 idt 表(中断描述符表), 使表中每一项指向定义在 `trapentry.S` 中的入口指针, 使用宏`SETGATE` 宏来实现.
+
+给宏`SETGATE`传函数名和对应的中断序号即可, 在使用函数名之前, 需要先声明函数, 告诉连接器要使用  `trapentry.S`文件中的`symbol`
+
+```
+void
+trap_init(void)
+{
+    extern struct Segdesc gdt[];
+    
+    // LAB 3: Your code here.
+  	void divide_handler();
+    void debug_handler();
+    void nmi_handler();
+    void brkpt_handler();
+    void oflow_handler();
+    void bound_handler();
+    void device_handler();
+    void illop_handler();
+    void tss_handler();
+    void segnp_handler();
+    void stack_handler();
+    void gpflt_handler();
+    void pgflt_handler();
+    void fperr_handler();
+    void align_handler();
+    void mchk_handler();
+    void simderr_handler();
+    void syscall_handler();
+    void dblflt_handler();
+    
+    // GD_KT 全局描述符号 0x08(kernel text)
+    SETGATE(idt[T_DIVIDE], 0, GD_KT, divide_handler, 0);
+    SETGATE(idt[T_DEBUG], 0, GD_KT, debug_handler, 0);
+    SETGATE(idt[T_NMI], 0, GD_KT, nmi_handler, 0);
+    
+     // T_BRKPT DPL 3
+    SETGATE(idt[T_BRKPT], 0, GD_KT, brkpt_handler, 3);
+    
+    SETGATE(idt[T_OFLOW], 0, GD_KT, oflow_handler, 0);
+    SETGATE(idt[T_BOUND], 0, GD_KT, bound_handler, 0);
+    SETGATE(idt[T_DEVICE], 0, GD_KT, device_handler, 0);
+    SETGATE(idt[T_ILLOP], 0, GD_KT, illop_handler, 0);
+    SETGATE(idt[T_DBLFLT], 0, GD_KT, dblflt_handler, 0);
+    SETGATE(idt[T_TSS], 0, GD_KT, tss_handler, 0);
+    SETGATE(idt[T_SEGNP], 0, GD_KT, segnp_handler, 0);
+    SETGATE(idt[T_STACK], 0, GD_KT, stack_handler, 0);
+    SETGATE(idt[T_GPFLT], 0, GD_KT, gpflt_handler, 0);
+    SETGATE(idt[T_PGFLT], 0, GD_KT, pgflt_handler, 0);
+    SETGATE(idt[T_FPERR], 0, GD_KT, fperr_handler, 0);
+    SETGATE(idt[T_ALIGN], 0, GD_KT, align_handler, 0);
+    SETGATE(idt[T_MCHK], 0, GD_KT, mchk_handler, 0);
+    SETGATE(idt[T_SIMDERR], 0, GD_KT, simderr_handler, 0);
+  
+    // T_SYSCALL DPL 3
+  	SETGATE(idt[T_SYSCALL], 0, GD_KT, syscall_handler, 3);
+    
+    // Per-CPU setup 
+    trap_init_percpu();
+}
+```
+
+```
+// Set up a normal interrupt/trap gate descriptor.
+// - istrap: 1 for a trap (= exception) gate, 0 for an interrupt gate.
+    //   see section 9.6.1.3 of the i386 reference: "The difference between
+    //   an interrupt gate and a trap gate is in the effect on IF (the
+    //   interrupt-enable flag). An interrupt that vectors through an
+    //   interrupt gate resets IF, thereby preventing other interrupts from
+    //   interfering with the current interrupt handler. A subsequent IRET
+    //   instruction restores IF to the value in the EFLAGS image on the
+    //   stack. An interrupt through a trap gate does not change IF."
+// - sel: Code segment selector for interrupt/trap handler
+// - off: Offset in code segment for interrupt/trap handler
+// - dpl: Descriptor Privilege Level -
+//	  the privilege level required for software to invoke
+//	  this interrupt/trap gate explicitly using an int instruction.
+#define SETGATE(gate, istrap, sel, off, dpl)			\
+{								\
+	(gate).gd_off_15_0 = (uint32_t) (off) & 0xffff;		\
+	(gate).gd_sel = (sel);					\
+	(gate).gd_args = 0;					\
+	(gate).gd_rsv1 = 0;					\
+	(gate).gd_type = (istrap) ? STS_TG32 : STS_IG32;	\
+	(gate).gd_s = 0;					\
+	(gate).gd_dpl = (dpl);					\
+	(gate).gd_p = 1;					\
+	(gate).gd_off_31_16 = (uint32_t) (off) >> 16;		\
+}
+```
+
+`SETGATE`各参数的解释:
+
+gate: 
+
+<img src="images/i386_IDT_gate_descriptors.PNG" alt="i386_IDT_gate_descriptors" style="zoom:50%;" />
+
+istrap: 1 for a trap (= exception) gate, 0 for an interrupt gate. 
+
+sel:  interrupt/trap handler 的代码段选择子
+
+off: interrupt/trap handler 的代码段偏移
+
+dpl: 描述符特权级, 大部分中断门描述符特权级为 0, 少量的需要允许用户模式调用的为 3, 如断点 BRKPT 和系统调用 SYSCALL.
+
+此时, 再执行`make qemu`可以看到没有报 `triple fault`, 运行 `make grade`可以看到 divzero, softint, badsegment 这几个测试通过 (Part A 测试全部通过, Part B 还没开始会 fail)
+
+```
+divzero: OK (2.8s) 
+    (Old jos.out.divzero failure log removed)
+softint: OK (1.9s) 
+    (Old jos.out.softint failure log removed)
+badsegment: OK (2.0s) 
+    (Old jos.out.badsegment failure log removed)
+Part A score: 30/30
+```
+
+##### Question
+
+```
+1. What is the purpose of having an individual handler function for each exception/interrupt? (i.e., if all exceptions/interrupts were delivered to the same handler, what feature that exists in the current implementation could not be provided?)
+
+答:
+	不同的中断或者异常需要不同的中断处理函数, 因为不同的异常/中断需要不同的处理方式. 比如有些异常是代表指令错误, 则需要直接中断程序的运行, 不会返回被中断的命令. 而 I/O中断在读取数据后, 还要返回到被中断的程序中继续运行.
+
+2. Did you have to do anything to make the user/softint program behave correctly? The grade script expects it to produce a general protection fault (trap 13), but softint's code says int $14. Why should this produce interrupt vector 13? What happens if the kernel actually allows softint's int $14 instruction to invoke the kernel's page fault handler (which is interrupt vector 14)?
+	需要做什么才能使 user/softint 程序正常运行? 评分脚本期望它产生一般保护错误(trap 13), 但 softint的代码为 int $14. 为什么这会产生interrupt vector 13? 如果内核实际上允许 softint int $14指令调用内核的页错误处理程序(中断向量14)会发生什么?
+
+答:
+	因为当前系统运行在用户态下, 特权级为3. 而 INT指令为系统指令, 特权级为0. 特权级为3的程序不能直接调用特权级为0的程序, 会导致一个 General Protection Exception, 即 trap 13.
+	我们在 SETGATE()中对中断向量14(T_PGFLT)设置的 DPL为0, 如果要允许, 可以设置中断向量14的 DPL为3, 但是一般不允许用户模式下(用户程序)来操作内存.
+```
+
+
+
 ## 参考
 
 https://pdos.csail.mit.edu/6.828/2018/labs/lab3/
+
+https://pdos.csail.mit.edu/6.828/2018/readings/ia32/
 
 https://zhuanlan.zhihu.com/p/74028717
 
@@ -898,5 +1260,3 @@ https://github.com/shishujuan/mit6.828-2017/blob/master/docs/lab3.md
 https://github.com/shishujuan/mit6.828-2017/blob/master/docs/lab3-exercize.md
 
 [【xv6学习之番外篇】详解struct Env 与 struct Trapframe_mick_seu的博客-CSDN博客](https://blog.csdn.net/woxiaohahaa/article/details/50564517)
-
-https://pdos.csail.mit.edu/6.828/2018/readings/ia32/

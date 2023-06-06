@@ -218,8 +218,3 @@ JOS lab 基于 XV6, 学习资料都是阅读 XV6相关章节.
    repo: https://github.com/Rand312/xv6
 
 4. repo: https://github.com/pleasewhy/xv6-book-2020-Chinese
-
-
-
-
-
