@@ -1221,7 +1221,7 @@ badsegment: OK (2.0s)
 Part A score: 30/30
 ```
 
-##### Question
+#### Question
 
 ```
 1. What is the purpose of having an individual handler function for each exception/interrupt? (i.e., if all exceptions/interrupts were delivered to the same handler, what feature that exists in the current implementation could not be provided?)
@@ -1236,6 +1236,120 @@ Part A score: 30/30
 	因为当前系统运行在用户态下, 特权级为3. 而 INT指令为系统指令, 特权级为0. 特权级为3的程序不能直接调用特权级为0的程序, 会导致一个 General Protection Exception, 即 trap 13.
 	我们在 SETGATE()中对中断向量14(T_PGFLT)设置的 DPL为0, 如果要允许, 可以设置中断向量14的 DPL为3, 但是一般不允许用户模式下(用户程序)来操作内存.
 ```
+
+## Part B: Page Faults, Breakpoints Exceptions, and System Calls
+
+现在你的操作系统内核已经具备基本的异常处理能力了, 你将对其进行改进, 以提供依赖于异常处理的重要操作系统原语.
+
+### Handling Page Faults
+
+缺页异常, 中断向量14 (`T_PGFLT`)，是一个特别重要的异常, 我们将在本实验和下一个实验中大量练习. 当处理器发生页面错误时, 它将导致该错误的线性(即虚拟)地址存储在一个特殊的处理器控制寄存器 `CR2` 中. 在 `trap.c`中，我们提供了一个特殊函数的开头部分, `page_fault_handler()`来用于处理缺页异常.
+
+在实现系统调用时, 将会进一步改进内核的缺页异常处理.
+
+### Exercise 5
+
+修改 `trap_dispatch()`，将页面故障异常分派给 `page_fault_handler()`. `make grade` 应该能够在 `faultread`,`faultreadkernel`,`faultwrite` 和 `faultwritekernel` 测试中成功. 如果它们中的任何一个不起作用, 找出原因并修复它们. 
+请记住, 可以使用 `make run-x` 或 `make run-x-nox` 将 JOS引导到特定的用户程序中. 例如 make run-hello-nox运行 hello用户程序.
+
+`Trapframe` 结构体中 `tf_trapno` 成员表示中断码, 根据入参 `Trapframe *tf` 中的 `tf_trapno` 成员来判断是否是缺页中断, 执行 `page_fault_handler`
+
+```
+static void
+trap_dispatch(struct Trapframe *tf)
+{
+	// Handle processor exceptions.
+	// LAB 3: Your code here.
+    switch(tf->tf_trapno) 
+    {
+        case (T_PGFLT):
+			page_fault_handler(tf);
+		 	break;
+		default: // Unexpected trap: The user process or the kernel has a bug.
+			print_trapframe(tf);
+            if (tf->tf_cs == GD_KT)
+                panic("unhandled trap in kernel");
+            else 
+            {
+                env_destroy(curenv);
+                return;
+            }
+    }
+}
+```
+
+### The Breakpoint Exception
+
+断点异常, 中断向量3 (`T_BRKPT`), 通常用于允许调试器在程序代码中插入断点，方法是用特殊的 1-byte `int3`软件中断指令临时替换相关的程序指令. 在 JOS中, 我们将稍微滥用这个异常, 把它变成一个基本的伪系统调用, 任何用户环境都可以用它来调用 JOS内核监视器. 如果我们把 JOS内核监视器看作是一个基本的调试器, 那么这种用法实际上是比较合适的. 例如 `lib/panic.c`中的 `panic()`的用户模式实现, 在显示其 `panic`消息后执行 `int3`.
+
+### Exercise 6
+
+修改 `trap_dispatch()`, 使断点异常调用内核监视器. 现在, `make grade` 应该能够在 `breakpoint`测试中成功.
+
+```
+static void
+trap_dispatch(struct Trapframe *tf)
+{
+	// Handle processor exceptions.
+	// LAB 3: Your code here.
+    switch(tf->tf_trapno) 
+    {
+        case (T_PGFLT):
+			page_fault_handler(tf);
+		 	break;
+        case (T_BRKPT):
+			monitor(tf);
+		 	break;		 	
+		default: // Unexpected trap: The user process or the kernel has a bug.
+			print_trapframe(tf);
+            if (tf->tf_cs == GD_KT)
+                panic("unhandled trap in kernel");
+            else 
+            {
+                env_destroy(curenv);
+                return;
+            }
+    }
+}
+```
+
+ `make grade` 运行结果
+
+```
+faultread: OK (0.9s) 
+    (Old jos.out.faultread failure log removed)
+faultreadkernel: OK (1.9s) 
+    (Old jos.out.faultreadkernel failure log removed)
+faultwrite: OK (2.2s) 
+    (Old jos.out.faultwrite failure log removed)
+faultwritekernel: OK (0.9s) 
+    (Old jos.out.faultwritekernel failure log removed)
+breakpoint: OK (1.8s) 
+    (Old jos.out.breakpoint failure log removed)
+```
+
+#### Questions
+
+```
+3. break point 测试用例中, 将生成 break point exception或者 general protection fault. 这取决于如何初始化 IDT中的断点条目(即从trap_init调用SETGATE). 为什么? 你需要如何设置它才能使断点异常像上面指定的那样工作? 哪些不正确的设置会导致它触发 general protection fault?
+
+答:
+设置 IDT表中的 breakpoint exception的表项时, 如果我们把表项中的 DPL字段设置为3, 则会触发 break point exception, 如果设置为0, 则会触发 general protection exception.
+DPL字段代表的含义是段描述符优先级(Descriptor Privileged Level), 如果我们想要当前执行的程序能够跳转到这个描述符所指向的程序继续执行的话, 有个要求就是当前运行程序的 CPL,RPL的最大值需要小于等于 DPL. 否则就会出现优先级低的代码试图去访问优先级高的代码的情况, 就会触发 general protection exception.
+测试程序首先运行于用户态, 它的CPL为3, 当异常发生时, 它希望去执行 int3指令, 这是一个系统级别的指令, 用户态命令的 CPL一定大于 int3的 DPL, 所以就会触发 general protection exception, 但如果把 IDT这个表项的 DPL设置为3时, 就不会出现这样的现象了. 这时如果再出现异常, 肯定是因为还没有编写 break point exception的异常处理程序所引起的.
+
+4. 你认为这些机制的意义是什么, 特别是考虑到 user/softint 测试程序所做的事情?
+答:
+DPL的设置, 可以限制用户态对关键指令的使用.
+```
+
+### System calls
+
+用户进程通过调用系统调用来要求内核为它们做一些事情. 当用户进程调用系统调用时, 处理器进入内核模式, 处理器和内核合作保存用户进程的状态, 内核执行相应的代码来执行系统调用, 然后恢复用户进程. 用户进程如何引起内核的注意以及它如何指定它想执行哪个调用的确切细节因系统而异.
+
+在 JOS内核中, 我们将使用 `int`指令, 这会导致处理器中断. 特别地, 我们将使用 `int $0x30` 作为系统调用中断. 我们已经为你定义了常量 `t_sycall`为 48 (0x30). 你必须设置中断描述符以允许用户进程引起该中断, 请注意中断`0x30` 不能由硬件生成, 因此允许用户代码生成它不会造成歧义.
+
+应用程序将在寄存器中传递系统调用号和系统调用参数. 这样内核就不需要在用户环境的堆栈或指令流中搜索. 系统调用号将以 `%eax`, 参数(最多5个)将以 `%edx、%ecx、%ebx、%edi`和 `%esi`的形式输入. 内核以 `%eax`将返回值以传回. 调用系统调用的汇编代码已经编写, 在 `lib/sycall.c sycall()` 中, 你应该通读一遍, 确保明白是怎么回事.
 
 
 
@@ -1260,3 +1374,6 @@ https://github.com/shishujuan/mit6.828-2017/blob/master/docs/lab3.md
 https://github.com/shishujuan/mit6.828-2017/blob/master/docs/lab3-exercize.md
 
 [【xv6学习之番外篇】详解struct Env 与 struct Trapframe_mick_seu的博客-CSDN博客](https://blog.csdn.net/woxiaohahaa/article/details/50564517)
+
+### Part B
+
