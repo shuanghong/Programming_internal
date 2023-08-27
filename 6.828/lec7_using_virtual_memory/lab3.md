@@ -1349,7 +1349,147 @@ DPL的设置, 可以限制用户态对关键指令的使用.
 
 在 JOS内核中, 我们将使用 `int`指令, 这会导致处理器中断. 特别地, 我们将使用 `int $0x30` 作为系统调用中断. 我们已经为你定义了常量 `t_sycall`为 48 (0x30). 你必须设置中断描述符以允许用户进程引起该中断, 请注意中断`0x30` 不能由硬件生成, 因此允许用户代码生成它不会造成歧义.
 
-应用程序将在寄存器中传递系统调用号和系统调用参数. 这样内核就不需要在用户环境的堆栈或指令流中搜索. 系统调用号将以 `%eax`, 参数(最多5个)将以 `%edx、%ecx、%ebx、%edi`和 `%esi`的形式输入. 内核以 `%eax`将返回值以传回. 调用系统调用的汇编代码已经编写, 在 `lib/sycall.c sycall()` 中, 你应该通读一遍, 确保明白是怎么回事.
+应用程序将在寄存器中传递系统调用号和系统调用参数. 这样内核就不需要在用户环境的堆栈或指令流中搜索. 系统调用号将以 `%eax`, 参数(最多5个)将以 `%edx、%ecx、%ebx、%edi`和 `%esi`的形式输入. 内核以 `%eax`将返回值以传回. 调用系统调用的汇编代码已经编写, 在 `lib/sycall.c` `sycall()` 中, 你应该通读一遍, 确保明白是怎么回事.
+
+### Exercise 7
+
+在内核中为中断向量 `T_SYSCALL`编写一个中断处理函数. 你需要去编辑 `kern/trapentry.S` 和 `kern/trap.c`的 `trap_init()`函数. 你也需要去修改 `trap_dispatch()`函数, 使他能够通过调用 `syscall()`（在 `kern/syscall.c`中定义的) 函数处理系统调用中断, 然后将返回值通过  `%eax`传递给用户进程. 最终你需要去实现`kern/syscall.c` 中的 `syscall()`函数, 确保这个函数会在系统调用号为非法值时返回 `-E_INVAL`. 你应该阅读和理解 `lib/syscall.c`(尤其是内联汇编例程), 以确认对系统调用接口的理解, 通过为每个调用调用相应的内核函数来处理在 `inc/sycall .h` 中列出的所有系统调用.
+
+
+
+通过 `make run-hello` 指令来运行 `user/hello` 程序, 它应该在控制台上打印 `“hello, world”`, 然后在用户模式下导致一个 page fault. 如果没有发生这种情况，则可能意味着你的系统调用处理程序不太正确. 你现在也应该能够在 testbss 测试中 `make grade` 成功.
+
+首先, 在  `kern/trapentry.S` 中为 `T_SYSCALL`声明一个中断处理函数(Exercise 4 中已实现).
+
+```
+TRAPHANDLER_NOEC(syscall_handler, T_SYSCALL)
+```
+
+在  `kern/trap.c`中注册 `syscall_handler`
+
+```
+void trap_init(void)
+{
+	...
+	void syscall_handler();
+
+    // T_SYSCALL DPL 3
+  	SETGATE(idt[T_SYSCALL], 0, GD_KT, syscall_handler, 3);
+}
+```
+
+此时当系统调用中断发生时, 内核就可以捕捉到 T_SYSCALL这个中断了, 其大致流程为: T_SYSCALL 系统调用 ---> _alltraps ---> trap() ---> trap_dispatch().
+
+然后在 `trap_dispatch()`中添加对 T_SYSCALL 的处理.
+
+```
+static void
+trap_dispatch(struct Trapframe *tf)
+{
+	// Handle processor exceptions.
+	// LAB 3: Your code here.
+    switch(tf->tf_trapno) 
+    {
+		...
+        case (T_BRKPT):
+			monitor(tf);
+		 	break;
+        case (T_SYSCALL):
+    		// print_trapframe(tf);
+            ret_code = syscall(
+                    tf->tf_regs.reg_eax,
+                    tf->tf_regs.reg_edx,
+                    tf->tf_regs.reg_ecx,
+                    tf->tf_regs.reg_ebx,
+                    tf->tf_regs.reg_edi,
+                    tf->tf_regs.reg_esi);
+            tf->tf_regs.reg_eax = ret_code;
+            break;	            
+		default: // Unexpected trap: The user process or the kernel has a bug.
+			...
+    }
+}
+```
+
+最后在 `kern/syscall.c`  `syscall()`中添加对 `syscallno` 的处理, 继续调用  `lib/syscall.c`中相应的系统调用函数.
+
+```
+int32_t
+syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5)
+{
+	// Call the function corresponding to the 'syscallno' parameter.
+	// Return any appropriate return value.
+	// LAB 3: Your code here.
+
+	switch (syscallno) {
+        case (SYS_cputs):
+            sys_cputs((const char *)a1, a2);
+            return 0;
+        case (SYS_cgetc):
+            return sys_cgetc();
+        case (SYS_getenvid):
+            return sys_getenvid();
+        case (SYS_env_destroy):
+            return sys_env_destroy(a1);		
+		default:
+			return -E_INVAL;
+	}
+}
+```
+
+ `make grade` 运行结果
+
+```
+divzero: OK (3.1s) 
+softint: OK (1.0s) 
+badsegment: OK (1.1s) 
+Part A score: 30/30
+
+faultread: OK (1.1s) 
+faultreadkernel: OK (2.1s) 
+faultwrite: OK (1.3s) 
+faultwritekernel: OK (1.8s) 
+breakpoint: OK (1.1s) 
+testbss: OK (1.8s) 
+    (Old jos.out.testbss failure log removed)
+hello: FAIL (1.4s) 
+```
+
+ `make run-hello` 运行结果, 用户模式下触发 page fault.
+
+```
+
+env_run() start...
+Incoming TRAP frame at 0xefffffbc
+hello, world
+env_run() start...
+Incoming TRAP frame at 0xefffffbc
+[00001000] user fault va 00000048 ip 00800059
+TRAP frame at 0xf01d1000
+  edi  0x00000000
+  esi  0x00000000
+  ebp  0xeebfdfd0
+  oesp 0xefffffdc
+  ebx  0x00802000
+  edx  0xeebfde88
+  ecx  0x0000000d
+  eax  0x00000000
+  es   0x----0023
+  ds   0x----0023
+  trap 0x0000000e Page Fault
+  cr2  0x00000048
+  err  0x00000004 [user, read, not-present]
+  eip  0x00800059
+  cs   0x----001b
+  flag 0x00000092
+  esp  0xeebfdfb8
+  ss   0x----0023
+[00001000] free env 00001000
+Destroyed the only environment - nothing more to do!
+Welcome to the JOS kernel monitor!
+Type 'help' for a list of commands.
+
+```
 
 
 
@@ -1361,6 +1501,14 @@ https://pdos.csail.mit.edu/6.828/2018/readings/ia32/
 
 https://zhuanlan.zhihu.com/p/74028717
 
+https://github.com/shishujuan/mit6.828-2017/blob/master/docs/lab3.md
+
+https://github.com/shishujuan/mit6.828-2017/blob/master/docs/lab3-exercize.md
+
+[【xv6学习之番外篇】详解struct Env 与 struct Trapframe_mick_seu的博客-CSDN博客](https://blog.csdn.net/woxiaohahaa/article/details/50564517)
+
+### PART A
+
 https://www.dingmos.com/index.php/archives/8/
 
 https://www.cnblogs.com/oasisyang/p/15520180.html
@@ -1369,11 +1517,8 @@ https://111qqz.com/2019/03/mit-6-828-lab-3-user-environments/
 
 https://www.cnblogs.com/fatsheep9146/p/5341836.html
 
-https://github.com/shishujuan/mit6.828-2017/blob/master/docs/lab3.md
-
-https://github.com/shishujuan/mit6.828-2017/blob/master/docs/lab3-exercize.md
-
-[【xv6学习之番外篇】详解struct Env 与 struct Trapframe_mick_seu的博客-CSDN博客](https://blog.csdn.net/woxiaohahaa/article/details/50564517)
-
 ### Part B
 
+https://www.cnblogs.com/fatsheep9146/p/5451579.html
+
+https://www.dingmos.com/index.php/archives/9/
