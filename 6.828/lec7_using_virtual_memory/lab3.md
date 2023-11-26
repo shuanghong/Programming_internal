@@ -1486,10 +1486,17 @@ TRAP frame at 0xf01d1000
 Destroyed the only environment - nothing more to do!
 Welcome to the JOS kernel monitor!
 Type 'help' for a list of commands.
-
 ```
 
+### User-mode startup
 
+用户程序在 `lib/entry.S` 文件顶部开始运行. 进行一些设置后, 调用 `lib/libmain.c` 文件中的 `libmain()` 函数. 你要修改一下 `libmain()` 来初始化全局指针 `thisenv`, 使其指向 `envs[]` 数组中当前环境(进程)的结构体 `struct Env` (注意:  Part A 中 `lib/entry.S` 中已经定义了 `envs` 指向 `UENVS` 映射). 提示: 查看 `inc/env.h`并使用 `sys_getenvid`.
+
+然后 `libmain()` 调用 `umain`, 如果是 `hello`程序它位于 `user/hello.c` 中. 注意, 在打印 `“hello, world”` 之后，它尝试访问 `thisenv->env_id`. 这就是前面 Exercise 7出现故障的原因. 现在你已经正确地初始化了这个环境, 应该不会出错. 如果仍然有问题, 你可能没有映射 `UENVS`区域为用户可读(回到Part A 的 `pmap.c`; 这是我们第一次实际使用 `UENVS`区域).
+
+### Exercise 8
+
+增加需要的代码到 `user library`, 然后启动内核. 你应该能看到 `user/hello` 打印 "`hello, world`", 然后打印 "`i am environment 00001000`". 然后 `user/hello` 调用 `sys_env_destroy()` 尝试"退出". 由于内核目前只支持一个用户环境(进程), 因此它应该报告它已经破坏了唯一的环境, 然后进入内核监视器.  在 `hello`测试中 `make grade` 成功.
 
 ## 参考
 
