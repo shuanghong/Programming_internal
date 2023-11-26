@@ -1355,8 +1355,6 @@ DPL的设置, 可以限制用户态对关键指令的使用.
 
 在内核中为中断向量 `T_SYSCALL`编写一个中断处理函数. 你需要去编辑 `kern/trapentry.S` 和 `kern/trap.c`的 `trap_init()`函数. 你也需要去修改 `trap_dispatch()`函数, 使他能够通过调用 `syscall()`（在 `kern/syscall.c`中定义的) 函数处理系统调用中断, 然后将返回值通过  `%eax`传递给用户进程. 最终你需要去实现`kern/syscall.c` 中的 `syscall()`函数, 确保这个函数会在系统调用号为非法值时返回 `-E_INVAL`. 你应该阅读和理解 `lib/syscall.c`(尤其是内联汇编例程), 以确认对系统调用接口的理解, 通过为每个调用调用相应的内核函数来处理在 `inc/sycall .h` 中列出的所有系统调用.
 
-
-
 通过 `make run-hello` 指令来运行 `user/hello` 程序, 它应该在控制台上打印 `“hello, world”`, 然后在用户模式下导致一个 page fault. 如果没有发生这种情况，则可能意味着你的系统调用处理程序不太正确. 你现在也应该能够在 testbss 测试中 `make grade` 成功.
 
 首先, 在  `kern/trapentry.S` 中为 `T_SYSCALL`声明一个中断处理函数(Exercise 4 中已实现).
