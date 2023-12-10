@@ -1498,6 +1498,276 @@ Type 'help' for a list of commands.
 
 增加需要的代码到 `user library`, 然后启动内核. 你应该能看到 `user/hello` 打印 "`hello, world`", 然后打印 "`i am environment 00001000`". 然后 `user/hello` 调用 `sys_env_destroy()` 尝试"退出". 由于内核目前只支持一个用户环境(进程), 因此它应该报告它已经破坏了唯一的环境, 然后进入内核监视器.  在 `hello`测试中 `make grade` 成功.
 
+这个练习目的是获得当前正在运行的用户环境的 env_id, 以及这个用户环境所对应的 struct Env 的指针. env_id 可以通过调用 sys_getenvid() 函数来获得, 那么如何获得它对应的 struct Env 结构体指针呢?
+
+inc/env.h 中, env_id 的定义如下:
+
+```
+envid_t env_id;	
+
+// An environment ID 'envid_t' has three parts:
+//
+// +1+---------------21-----------------+--------10--------+
+// |0|          Uniqueifier             |   Environment    |
+// | |                                  |      Index       |
+// +------------------------------------+------------------+
+//                                       \--- ENVX(eid) --/
+
+0~9bit: 环境索引, 即用户环境数组 envs[]的索引值, 也等于 ENVX(eid)
+10~30bit: 唯一标识符(env_id), 区分在不同时间创建的环境(但共享相同的索引)
+bit31: 恒为 0. All real environments are greater than 0 (so the sign bit is zero).
+```
+
+修改`libmain.c`
+
+```
+void
+libmain(int argc, char **argv)
+{
+	// set thisenv to point at our Env structure in envs[].
+	// LAB 3: Your code here.
+	thisenv = &envs[ENVX(sys_getenvid())];
+	...
+}
+```
+
+ `make grade` 运行结果, hello: OK (2.3s)
+
+```
+divzero: OK (3.2s) 
+softint: OK (1.2s) 
+badsegment: OK (1.6s) 
+Part A score: 30/30
+
+faultread: OK (1.3s) 
+faultreadkernel: OK (2.4s) 
+faultwrite: OK (1.4s) 
+faultwritekernel: OK (2.1s) 
+breakpoint: OK (1.6s) 
+testbss: OK (2.0s) 
+hello: OK (2.3s) 
+```
+
+ `make run-hello` 正常运行, 无 page fault.
+
+```
+mem_init() map envs to virtual address:UENVS, PTSIZE:4194304, ROUNDUP:98304
+check_kern_pgdir() succeeded!
+check_page_free_list() succeeded!
+check_page_installed_pgdir() succeeded!
+env_init() done!
+e->env_pgdir:0xf03bc000
+[00000000] new env 00001000
+env_create() done before load_icode()
+ph:0xf011c364, end_ph:0xf011c3e4
+load_icode() done!
+env_run() start...
+Incoming TRAP frame at 0xefffffbc
+env_run() start...
+Incoming TRAP frame at 0xefffffbc
+hello, world
+env_run() start...
+Incoming TRAP frame at 0xefffffbc
+i am environment 00001000
+env_run() start...
+Incoming TRAP frame at 0xefffffbc
+[00001000] exiting gracefully
+[00001000] free env 00001000
+Destroyed the only environment - nothing more to do!
+Welcome to the JOS kernel monitor!
+Type 'help' for a list of commands.
+K> 
+```
+
+### Page faults and memory protection
+
+内存保护是操作系统的非常重要的一项功能, 它可以防止由于用户程序崩溃对操作系统带来的破坏与影响.
+
+操作系统通常依赖于硬件的支持来实现内存保护. 操作系统通知硬件哪些虚拟地址是有效的, 哪些是无效的. 当程序尝试去访问一个无效地址或一个它没有权限的地址时, 处理器会在这个指令处终止, 并且触发异常, 陷入内核态, 与此同时把错误的信息报告给内核. 如果这个异常是可以被修复的, 那么内核会修复这个异常, 然后程序继续运行. 如果错误是不可修复的, 那么程序则不能继续, 因为它永远无法通过导致错误的指令.
+
+作为一个可修复 fault的例子, 考虑一个自动扩展的堆栈. 在许多系统中, 内核在初始情况下只会分配一个内核堆栈页, 然后如果一个程序在访问堆栈更下面的页面时出错(触发异常), 内核将自动分配这些页面, 并让程序继续运行. 通过这样做, 内核只分配程序所需的堆栈内存, 但是程序可以在它具有任意大的堆栈的错觉下工作.
+
+ 系统调用也为内存保护带来了问题. 大部分系统调用接口让用户程序传递一个指针参数给内核, 这些指针指向的是用户缓冲区. 通过这种方式, 系统调用在执行时就可以解引用这些指针, 但是这里有两个问题：
+
+　　 1. 内核中的 page fault 可能比在用户程序中的 page fault 严重得多. 如果内核在操作自己的数据结构时出现 page faults, 这是一个内核的 bug, 而且异常处理程序会中断整个内核. 但是当内核在解引用由用户程序传递来的指针时, 它需要一种方法去记录此时出现的任何 page faults 都是由用户程序带来的.
+
+　　 2. 内核通常比用户程序有着更高的内存访问权限. 用户程序很有可能要传递一个指针给系统调用, 这个指针指向的内存区域是内核可以进行读写的, 但是用户程序不能. 内核必须小心不要被骗去解引用这样的指针, 因为这可能会泄露私有信息或破坏内核的完整性.
+
+由于这两个原因, 内核在处理用户程序提供的指针时必须非常小心.
+
+现在, 你将使用一种机制来解决这两个问题, 该机制检查从用户空间传递到内核的所有指针. 当程序向内核传递一个指针时, 内核将检查该地址是否在地址空间的用户部分, 并且页表是否允许内存操作.
+
+因此, 内核永远不会因为解引用用户提供的指针而出现页面错误. 如果内核发生了页面错误,  应该 panic and terminate.
+
+### Exercise 9
+
+修改 kern/trap.c, 如果 page fault 发生在 kernel mode 则 panic.
+
+提示: 要确定 fault 发生在用户模式还是在内核模式下, 请检查 tf_cs 的低几位.
+
+阅读 user_mem_assert(在 kern/pmap.c), 并且实现 user_mem_check;
+
+修改 kern/syscall.c, 对系统调用的参数进行完整性检查.
+
+ 启动内核, 运行 user/buggyhello 程序, 用户环境应该被销毁, 内核不应该 panic, 你应该看到:
+
+```
+	[00001000] user_mem_check assertion failure for va 00000001
+	[00001000] free env 00001000
+	Destroyed the only environment - nothing more to do!
+```
+
+首先, 根据 CS 段寄存器的低2位来判断当前运行的程序时处在内核态下还是用户态下.
+这两位叫做 CPL 位, 表示当前运行的代码的访问权限级别. 0代表是内核态, 3代表是用户态.
+
+```
+	// Handle kernel-mode page faults.
+
+	// LAB 3: Your code here.
+    if(tf->tf_cs && 0x11 == 0) {
+        panic("page_fault in kernel mode, fault address %d\n", fault_va);
+    }
+```
+
+user_mem_assert 调用了 user_mem_check(env, va, len, perm | PTE_U), user_mem_check() 的功能是检查一下当前用户态程序是否有对虚拟地址空间 [va, va+len] 的 perm| PTE_P 访问权限. 那我们要做的事情应该是先找到这个虚拟地址范围对应于当前用户态程序的页表中的页表项, 再去检查这个页表项中有关访问权限的字段是否包含 perm | PTE_P, 只要有一个页表项是不包含的, 就代表程序对这个范围的虚拟地址没有 perm|PTE_P 的访问权限.
+
+```
+int
+user_mem_check(struct Env *env, const void *va, size_t len, int perm)
+{
+    // LAB 3: Your code here.
+    uint32_t start = (uint32_t)ROUNDDOWN((char *)va, PGSIZE);
+    uint32_t end = (uint32_t)ROUNDUP((char *)va+len, PGSIZE);
+    
+    for(; start < end; start += PGSIZE) {
+        pte_t *pte = pgdir_walk(env->env_pgdir, (void*)start, 0);
+        if((start >= ULIM) || (pte == NULL) || !(*pte & PTE_P) || ((*pte & perm) != perm)) {
+            user_mem_check_addr = (start < (uint32_t)va ? (uint32_t)va : start);
+            return -E_FAULT;
+        }
+    }
+    return 0;
+}
+```
+
+修改 kern/syscall.c, 对系统调用的参数进行完整性检查.
+
+```
+static void
+sys_cputs(const char *s, size_t len)
+{
+	// Check that the user has permission to read memory [s, s+len).
+	// Destroy the environment if not.
+
+	// LAB 3: Your code here.
+    user_mem_assert(curenv, s, len, 0);
+	// Print the string supplied by the user.
+	cprintf("%.*s", len, s);
+}
+```
+
+最后, 修改 kern/kdebug.c 中的 debuginfo_eip, 在 usd、stab 和 stabstr上调用 user_mem_check. 如果你现在运行 user/breakpoint, 应该能够从内核监视器中运行 backtrace, 并在内核出现  page fault 之前看到回溯遍历到lib/libmain.c. 是什么导致了这个页面错误? 你不需要去修复它, 但你应该明白它为什么会发生.
+
+```
+		// Make sure this memory is valid.
+		// Return -1 if it is not.  Hint: Call user_mem_check.
+		// LAB 3: Your code here.
+		if (user_mem_check(curenv, usd, sizeof(struct UserStabData), PTE_U))
+			return -1;
+
+		...
+		// Make sure the STABS and string table memory is valid.
+		// LAB 3: Your code here.
+		if (user_mem_check(curenv, stabs, sizeof(struct Stab), PTE_U))
+			return -1;
+
+		if (user_mem_check(curenv, stabstr, stabstr_end-stabstr, PTE_U))
+			return -1;
+```
+
+`make grade` 结果
+
+```
+buggyhello: OK (1.8s) 
+buggyhello2: OK (2.5s) 
+evilhello: OK (2.0s) 
+Part B score: 50/50
+```
+
+`make run-buggyhello` 结果
+
+```
+env_run() start...
+Incoming TRAP frame at 0xefffffbc
+env_run() start...
+Incoming TRAP frame at 0xefffffbc
+[00001000] user_mem_check assertion failure for va 00000001
+[00001000] free env 00001000
+Destroyed the only environment - nothing more to do!
+Welcome to the JOS kernel monitor!
+Type 'help' for a list of commands.
+```
+
+`make run-breakpoint` 结果
+
+```
+env_run() start...
+Incoming TRAP frame at 0xefffffbc
+env_run() start...
+Incoming TRAP frame at 0xefffffbc
+Welcome to the JOS kernel monitor!
+Type 'help' for a list of commands.
+TRAP frame at 0xf01d1000
+  edi  0x00000000
+  esi  0x00000000
+  ebp  0xeebfdfc0
+  oesp 0xefffffdc
+  ebx  0x00802000
+  edx  0x0080202c
+  ecx  0x00000000
+  eax  0xeec00000
+  es   0x----0023
+  ds   0x----0023
+  trap 0x00000003 Breakpoint
+  err  0x00000000
+  eip  0x00800037
+  cs   0x----001b
+  flag 0x00000082
+  esp  0xeebfdfc0
+  ss   0x----0023
+```
+
+### Exercise 10
+
+ 启动内核, 运行 user/evilhello 程序, 环境应该被销毁, 内核不会 panic, 你应该看到:
+
+```
+	[00000000] new env 00001000
+	...
+	[00001000] user_mem_check assertion failure for va f010000c
+	[00001000] free env 00001000
+```
+
+`make run-evilhello` 结果
+
+```
+...
+[00000000] new env 00001000
+env_create() done before load_icode()
+ph:0xf01363ec, end_ph:0xf013646c
+load_icode() done!
+env_run() start...
+Incoming TRAP frame at 0xefffffbc
+env_run() start...
+Incoming TRAP frame at 0xefffffbc
+[00001000] user_mem_check assertion failure for va f010000c
+[00001000] free env 00001000
+Destroyed the only environment - nothing more to do!
+Welcome to the JOS kernel monitor!
+Type 'help' for a list of commands.
+K> 
+```
+
 ## 参考
 
 https://pdos.csail.mit.edu/6.828/2018/labs/lab3/
