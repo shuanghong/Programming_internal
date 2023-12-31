@@ -120,8 +120,8 @@ CSAPP 的中文讲解: https://www.bilibili.com/video/BV1cD4y1D7uR/
 《操作系统真相还原》
 
 Operating Systems - Three Easy Pieces 中文书: 《操作系统导论》
-
-翻译: https://github.com/remzi-arpacidusseau/ostep-translations/tree/master/chinese
+	官网: https://pages.cs.wisc.edu/~remzi/OSTEP/
+	翻译: https://github.com/remzi-arpacidusseau/ostep-translations/tree/master/chinese
 
 ## 参考:
 CS自学指南:
