@@ -43,6 +43,11 @@ CSAPP 的中文讲解: https://www.bilibili.com/video/BV1cD4y1D7uR/
     课件:
     https://github.com/liuxinyu123/cs_basis
 
+### 相关读书笔记
+
+读薄 CSAPP 系列
+https://wdxtub.com/csapp/thin-csapp-0/2016/04/16/
+
 ## Computer System Architecture
 计算机组成原理、体系结构是学习 OS的前置知识.
 
@@ -119,9 +124,21 @@ CSAPP 的中文讲解: https://www.bilibili.com/video/BV1cD4y1D7uR/
 
 《操作系统真相还原》
 
-Operating Systems - Three Easy Pieces 中文书: 《操作系统导论》
+Operating Systems - Three Easy Pieces 
+	中文书: 《操作系统导论》
 	官网: https://pages.cs.wisc.edu/~remzi/OSTEP/
-	翻译: https://github.com/remzi-arpacidusseau/ostep-translations/tree/master/chinese
+			相比书, 增加了 "Security" 章节
+
+​	翻译: https://github.com/remzi-arpacidusseau/ostep-translations/tree/master/chinese
+
+ Operating Systems: Principles and Practice (2nd Edition) https://www.kea.nu/files/textbooks/ospp/
+	CS162 Operating System 教材, 更加侧重 OS 的设计而非组成, 一共四卷, 第二章 Concurrency 尤其精彩
+
+参考
+	https://www.zhihu.com/question/31863104
+	https://book.douban.com/subject/25984145/
+	https://book.douban.com/subject/26745156/
+	https://book.douban.com/subject/36560814/
 
 ## 参考:
 CS自学指南:
