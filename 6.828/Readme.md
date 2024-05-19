@@ -207,14 +207,16 @@ JOS lab 基于 XV6, 学习资料都是阅读 XV6相关章节.
 
    这里取的是 rev8 分支, chapter1: 操作系统组织架构
 
-2. https://zhuanlan.zhihu.com/p/166413604
+2. [MIT 6.828：实现操作系统 | Lab1：快来引导一个内核吧 - 知乎 (zhihu.com)](https://zhuanlan.zhihu.com/p/166413604)
 
 <img src="xv6_docs/images/xv6_reference0.PNG" alt="xv6_reference0" style="zoom:50%;" />
 
 ​	repo: AnBlogs/6.828, https://github.com/Anarion-zuo/AnBlogs/tree/master/6.828
 
-3. 给操作系统捋条线, https://zhuanlan.zhihu.com/p/438838399
+3. [MIT6.828-神级OS课程-要是早遇到，我还会是这种 five 系列 - 知乎 (zhihu.com)](https://zhuanlan.zhihu.com/p/74028717)
+
+4. 给操作系统捋条线, https://zhuanlan.zhihu.com/p/438838399
 
    repo: https://github.com/Rand312/xv6
 
-4. repo: https://github.com/pleasewhy/xv6-book-2020-Chinese
+5. repo: https://github.com/pleasewhy/xv6-book-2020-Chinese
