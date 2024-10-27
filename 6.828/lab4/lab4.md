@@ -392,7 +392,7 @@ mmio_map_region(physaddr_t pa, size_t size)
 
 `boot_aps()`(在 `kern/init.c`中)函数驱动了 AP引导过程. AP以实模式启动, 非常类似于 bootloader 在 `boot/boot.S`中启动的方式, 因此 `boot_aps()`将 AP入口代码( `kern/mpentry.S`) 复制到可在实模式下寻址的内存位置. 与 bootloader 不同, 我们可以控制 AP开始执行代码的位置; 我们将 entry 代码复制到  `0x7000` (`MPENTRY_PADDR`), 但任何未使用的, 页面对齐的物理地址低于 640KB都可以.
 
-之后, `boot_aps()` 函数通过发送 `STARTUP`的 IPI(处理器间中断)信号到 AP的 LAPIC 单元来一个个地激活 AP. 并附带一个 AP应该开始执行其入口代码的初始 `CS:IP` 地址(在我们的案例中是  `MPENTRY_PADDR`). `kern/mpentry.S` 的入口代码与  `boot/boot.S`的代码相似, 在一些简短的配置后, 它使AP进入保护模式并启用分页, 调用 C语言的配置函数  `mp_main()`. `boot_aps()` 在继续唤醒下一个 AP之前, 会等待 AP在其 `struct CpuInfo`  的`cpu_status`字段中发出  `CPU_STARTED` 标志.
+之后, `boot_aps()` 函数通过发送 `STARTUP`的 IPI(处理器间中断)信号到 AP的 LAPIC 单元来一个个地激活 AP. 并附带一个 AP应该开始执行其入口代码的初始 `CS:IP` 地址(在我们的案例中是  `MPENTRY_PADDR`). `kern/mpentry.S` 的入口代码与  `boot/boot.S`的代码相似, 在一些简短的配置后, 它使 AP进入保护模式并启用分页, 调用 C语言的配置函数  `mp_main()`. `boot_aps()` 在继续唤醒下一个 AP之前, 会等待 AP在其 `struct CpuInfo`  的`cpu_status`字段中发出  `CPU_STARTED` 标志.
 
 #### Exercise 2
 
@@ -469,12 +469,86 @@ Hint: recall the differences between the link address and the load address that 
 
 ```
 Modify mem_init_mp() (in kern/pmap.c) to map per-CPU stacks starting at KSTACKTOP, as shown in inc/memlayout.h. The size of each stack is KSTKSIZE bytes plus KSTKGAP bytes of unmapped guard pages. Your code should pass the new check in check_kern_pgdir().
+
+//memlayout.h, 为每个 CPU分配一个内核栈,大小KSTKSIZE,内核栈之间的间隔 KSTKGAP,起保护作用
+ *    KERNBASE, ---->  +------------------------------+ 0xf0000000      --+
+ *    KSTACKTOP        |     CPU0's Kernel Stack      | RW/--  KSTKSIZE   |
+ *                     | - - - - - - - - - - - - - - -|                   |
+ *                     |      Invalid Memory (*)      | --/--  KSTKGAP    |
+ *                     +------------------------------+                   |
+ *                     |     CPU1's Kernel Stack      | RW/--  KSTKSIZE   |
+ *                     | - - - - - - - - - - - - - - -|                 PTSIZE
+ *                     |      Invalid Memory (*)      | --/--  KSTKGAP    |
+ *                     +------------------------------+                   |
+ *                     :              .               :                   |
+ *                     :              .               :                   |
+ *    MMIOLIM ------>  +------------------------------+ 0xefc00000      --+
+ 
+static void
+mem_init_mp(void)
+{
+	// Map per-CPU stacks starting at KSTACKTOP, for up to 'NCPU' CPUs.
+	//
+	// For CPU i, use the physical memory that 'percpu_kstacks[i]' refers
+	// to as its kernel stack. CPU i's kernel stack grows down from virtual
+	// address kstacktop_i = KSTACKTOP - i * (KSTKSIZE + KSTKGAP), and is
+	// divided into two pieces, just like the single stack you set up in
+	// mem_init:
+	//     * [kstacktop_i - KSTKSIZE, kstacktop_i)
+	//          -- backed by physical memory
+	//     * [kstacktop_i - (KSTKSIZE + KSTKGAP), kstacktop_i - KSTKSIZE)
+	//          -- not backed; so if the kernel overflows its stack,
+	//             it will fault rather than overwrite another CPU's stack.
+	//             Known as a "guard page".
+	//     Permissions: kernel RW, user NONE
+	//
+	// LAB 4: Your code here:
+    size_t i;
+    size_t kstacktop_i;
+    for(i = 0; i < NCPU; i++)
+    {
+        kstacktop_i = KSTACKTOP - i * (KSTKSIZE + KSTKGAP);
+        boot_map_region(kern_pgdir,
+                        kstacktop_i - KSTKSIZE,
+                        KSTKSIZE,
+                        PADDR(&percpu_kstacks[i]),
+                        PTE_W);
+    }
+}
 ```
 
 #### Exercise 4
 
 ```
 The code in trap_init_percpu() (kern/trap.c) initializes the TSS and TSS descriptor for the BSP. It worked in Lab 3, but is incorrect when running on other CPUs. Change the code so that it can work on all CPUs. (Note: your new code should not use the global ts variable any more.)
+
+// 复用 Lab3中的代码, 将所有的全局ts替换为 cpus[i].cpu_ts 就行.
+// 并且此时代码执行发生在不同的 CPU上, 只需要对自身 CPU进行初始化即可, 即使用 thiscpu->cpu_ts代替全局变量 ts
+// 不需要对所有 CPU进行 init
+void
+trap_init_percpu(void)
+{
+	// LAB 4: Your code here:
+
+	// Setup a TSS so that we get the right stack
+	// when we trap to the kernel.
+    size_t i = cpunum();
+    thiscpu->cpu_ts.ts_esp0 = KSTACKTOP - i*(KSTKSIZE + KSTKGAP);
+    thiscpu->cpu_ts.ts_ss0 = GD_KD;
+    thiscpu->cpu_ts.ts_iomb = sizeof(struct Taskstate);
+    // Initialize the TSS slot of the gdt.
+    gdt[GD_TSS0 >> 3] = SEG16(STS_T32A, (uint32_t) (&thiscpu->cpu_ts),
+                            sizeof(struct Taskstate) - 1, 0);
+    gdt[GD_TSS0 >> 3].sd_s = 0;
+
+	// Load the TSS selector (like other segment selectors, the
+	// bottom three bits are special; we leave them 0)
+	ltr(GD_TSS0);
+
+	// Load the IDT
+	lidt(&idt_pd);
+}
+
 ```
 
 完成上述练习后, 使用 make qemu CPUS=4 (或 make qemu-nox CPUS=4) 在 QEMU中运行 JOS, 应该会看到如下输出:
@@ -492,6 +566,8 @@ SMP: CPU 1 starting
 SMP: CPU 2 starting
 SMP: CPU 3 starting
 ```
+
+<img src="images/exercise1~4.PNG" style="zoom: 80%;" />
 
 #### Locking
 
