@@ -215,6 +215,9 @@ JOS lab 基于 XV6, 学习资料都是阅读 XV6相关章节.
 
 3. [MIT6.828-神级OS课程-要是早遇到，我还会是这种 five 系列 - 知乎 (zhihu.com)](https://zhuanlan.zhihu.com/p/74028717)
 
+   [GitHub - SmallPond/MIT6.828_OS: MIT 6.828 Operating System Lab https://pdos.csail.mit.edu/6.828/2018/schedule.html](https://github.com/SmallPond/MIT6.828_OS)
+   [MIT6.828操作系统_Small_Pond的博客-CSDN博客](https://blog.csdn.net/small_pond/category_8979531.html)
+
 4. 给操作系统捋条线, https://zhuanlan.zhihu.com/p/438838399
 
    repo: https://github.com/Rand312/xv6

@@ -584,6 +584,52 @@ SMP: CPU 3 starting
 
 ```
 Apply the big kernel lock as described above, by calling lock_kernel() and unlock_kernel() at the proper locations.
+
+void
+i386_init(void)
+{
+	// Acquire the big kernel lock before waking up APs
+	// Your code here:
+    lock_kernel();
+	// Starting non-boot CPUs
+	boot_aps();
+}
+
+void
+mp_main(void)
+{
+	// Now that we have finished some basic setup, call sched_yield()
+	// to start running processes on this CPU.  But make sure that
+	// only one CPU can enter the scheduler at a time!
+	//
+	// Your code here:
+    lock_kernel();
+	sched_yield();
+
+	// Remove this after you finish Exercise 6
+	for (;;);
+}
+
+void
+trap(struct Trapframe *tf)
+{
+	if ((tf->tf_cs & 3) == 3) {
+		// Trapped from user mode.
+		// Acquire the big kernel lock before doing any
+		// serious kernel work.
+		// LAB 4: Your code here.
+        lock_kernel();
+		assert(curenv);
+	}
+}
+
+void
+env_run(struct Env *e)
+{
+    unlock_kernel();
+    //保存环境
+	env_pop_tf(&e->env_tf);
+}
 ```
 
 如何测试你的锁是否正确? 此时无法测试, 但是在接下来的练习中实现调度程序后, 将能够进行测试.
@@ -592,7 +638,27 @@ Apply the big kernel lock as described above, by calling lock_kernel() and unloc
 
 ```
 2. It seems that using the big kernel lock guarantees that only one CPU can run the kernel code at a time. Why do we still need separate kernel stacks for each CPU? Describe a scenario in which using a shared kernel stack will go wrong, even with the protection of the big kernel lock.
+(big kernel lock 似乎已经确保每次仅仅一个 CPU能运行内核代码,为什么我们仍然需要为每个 CPU设定一个内核栈)
+
+A:
+因为每个 CPU进入内核, 其压栈的数据可能不一样, 同时此 CPU下一次再进入内核时可能需要用到之前的数据
+在 _alltraps到 lock_kernel()的过程中,进程已经切换到了内核态, 但并没有上内核锁, 此时如果有其他 CPU进入内核,如果用同一个内核栈, 则 _alltraps中保存的上下文信息会被破坏, 所以即使有大内核栈, CPU也不能用用同一个内核栈. 同样的, 解锁也是在内核态内解锁, 在解锁到真正返回用户态这段过程中, 也存在上述这种情况.
 ```
+
+#### Challenge
+
+```
+大内核锁简单便于应用, 但是它取消了内核模式的并行. 大多数现在操作系统使用不同的锁来保护共享状态下的不同部分, 称之为细粒度锁. 细粒度锁能有效地提高性能, 但是也更难实现和检查错误. 所以你可以去掉大内核锁, 在 JOS中实现内核并发.
+
+由你来决定锁的粒度(锁保护的数据量), 可以考虑使用自旋锁来确保对 JOS内核中这些共享组件的独占访问:
+
+The page allocator(页分配器)
+The console driver(控制台驱动程序)
+The scheduler(调度器)
+The inter-process communication (IPC) state that you will implement in the part C (part C 实现的进程间通信)
+```
+
+
 
 ### Round-Robin Scheduling
 
