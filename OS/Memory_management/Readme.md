@@ -1,5 +1,7 @@
 ## os-tep 中文翻译
 
+[操作系统导论（中文版） | ostep-chinese](https://itanken.github.io/ostep-chinese/)
+
 https://github.com/remzi-arpacidusseau/ostep-translations/tree/master/chinese
 
 ## 参考
